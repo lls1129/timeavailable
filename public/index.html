@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>timeavailable — find a time that works for everyone</title>
+<meta name="description" content="Pick dates and time slots, share a link, and see when everyone is free. Google Calendar is checked in your browser only.">
+<link rel="stylesheet" href="/app.css">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="logo">⏱</span> timeavailable</a>
+  <span class="muted small">No accounts. No calendar data stored.</span>
+</header>
+<main class="container narrow">
+  <div class="card">
+    <h1>Find a time that works for everyone</h1>
+    <p class="muted">Choose the dates and time slots you want to offer. You'll get a link to share; each person marks when they're free (or imports it from Google Calendar, privately in their browser) and you see the overlap.</p>
+  </div>
+
+  <form id="create" autocomplete="off">
+    <div class="card">
+      <h2>1. What is this for?</h2>
+      <div class="field"><label for="title">Title</label><input id="title" type="text" maxlength="120" placeholder="e.g. Project kickoff" required></div>
+      <div class="field"><label for="description">Description <span class="hint">(optional)</span></label><textarea id="description" maxlength="2000" placeholder="Anything participants should know"></textarea></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Which dates?</h2>
+      <p class="muted small">Click a date to toggle it, or click and drag to select a range. Any combination of dates works.</p>
+      <div class="grid-2">
+        <div class="cal" id="cal"></div>
+        <div>
+          <div class="row" style="margin-bottom:8px">
+            <button type="button" class="btn-sm" data-quick="7">Next 7 days</button>
+            <button type="button" class="btn-sm" data-quick="14">Next 14 days</button>
+            <button type="button" class="btn-sm" data-quick="weekdays">Next 2 weeks, weekdays</button>
+            <button type="button" class="btn-sm" id="clear-dates">Clear</button>
+          </div>
+          <div id="date-summary" class="muted small">No dates selected yet.</div>
+          <div class="chips" id="date-chips"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. Which times?</h2>
+      <div class="field">
+        <div class="btn-group" role="radiogroup">
+          <button type="button" class="mode active" data-mode="times">Specific time slots</button>
+          <button type="button" class="mode" data-mode="dates">Whole days only</button>
+        </div>
+      </div>
+      <div id="time-opts">
+        <div class="grid-2">
+          <div class="field"><label for="start">Earliest</label><input id="start" type="time" value="09:00" step="300" required></div>
+          <div class="field"><label for="end">Latest <span class="hint">(end of the last slot)</span></label><input id="end" type="time" value="18:00" step="300" required></div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="slot">Slot length</label>
+            <select id="slot">
+              <option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30" selected>30 minutes</option>
+              <option value="45">45 minutes</option><option value="60">1 hour</option><option value="90">1.5 hours</option>
+              <option value="120">2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option><option value="custom">Custom…</option>
+            </select>
+            <input id="slot-custom" class="hidden" type="number" min="5" max="1440" step="5" value="10" style="margin-top:6px" aria-label="Custom slot length in minutes">
+          </div>
+          <div class="field"><label for="tz">Timezone <span class="hint">(these times are in)</span></label><select id="tz"></select></div>
+        </div>
+      </div>
+      <div class="field"><label class="check"><input type="checkbox" id="allowMaybe" checked> Let people also mark “if needed” (lower-priority availability)</label></div>
+    </div>
+
+    <div class="card">
+      <h2>4. Preview &amp; fine-tune</h2>
+      <p class="muted small">This is the grid people will fill in. Click any slot to remove it (for example lunch breaks or a day that ends early); click again to restore it.</p>
+      <div id="preview-info" class="muted small" style="margin-bottom:8px"></div>
+      <div class="tgrid-wrap" id="preview"></div>
+    </div>
+
+    <div id="create-error" class="alert error hidden"></div>
+    <div class="row" style="justify-content:flex-end">
+      <button type="submit" class="primary" id="submit">Create &amp; get link</button>
+    </div>
+  </form>
+
+  <div class="card hidden" id="done">
+    <h2>Your poll is ready 🎉</h2>
+    <p>Share this link with everyone who should answer:</p>
+    <div class="linkbox"><input type="text" id="share-link" readonly><button type="button" id="copy-share">Copy</button><a class="btn" id="open-share" target="_blank" rel="noopener">Open</a></div>
+    <p><b>Admin link</b> — keep this private. It lets you remove responses, close or delete the poll:</p>
+    <div class="linkbox"><input type="text" id="admin-link" readonly><button type="button" id="copy-admin">Copy</button></div>
+    <p class="muted small">Both links are also remembered in this browser. There are no accounts, so if you lose the admin link it can't be recovered.</p>
+  </div>
+
+  <div class="card" id="recent-card">
+    <h2>Polls you created on this device</h2>
+    <div id="recent"></div>
+  </div>
+</main>
+<footer>timeavailable · Calendar lookups run in your browser; the server only stores the slots you submit.</footer>
+<script src="/slots.js"></script>
+<script src="/common.js"></script>
+<script src="/create.js"></script>
+</body>
+</html>

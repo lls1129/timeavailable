@@ -1,0 +1,17 @@
+# Render blueprint. In the Render dashboard: New → Blueprint → pick this repo.
+# A persistent disk is required so the SQLite database survives deploys.
+services:
+  - type: web
+    name: timeavailable
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
