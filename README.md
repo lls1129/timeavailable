@@ -18,6 +18,25 @@ The server **never** learns anything about anyone's calendar. Concretely:
 
 The page is served with a strict Content-Security-Policy whose `connect-src` only allows this server, Google's sign-in endpoints, and the `freeBusy` endpoint. The code is ~600 lines of plain JavaScript with no dependencies, so this is easy to audit: see `server.js`, `public/poll.js`.
 
+## Two ways to host it
+
+| | Server mode (`server.js`) | Static mode (any file host, e.g. GitHub Pages) |
+| --- | --- | --- |
+| Needs | Node 22 + a persistent disk | Nothing — just the files in `public/` |
+| Where answers live | SQLite on the server | **Inside the link itself** |
+| How people answer | Open the link, submit | Open the link, save, **post the updated link back** |
+| Admin link, close poll | Yes | No (anyone with the link can edit it) |
+| Google Calendar import | Yes | Yes (same browser-only flow) |
+
+Static mode is the "no server, online in five minutes" option: the poll definition and every answer are compressed into the URL fragment (`poll.html#z…`). A poll with a dozen answers is well under 1 KB. Nothing is ever uploaded anywhere. The workflow is: the host shares link A; each person who saves gets link B that includes all answers so far and posts it back; the next person continues from the newest link. If people answer in parallel from the same link, any poll page can **Combine links from others** (merge by name, newest wins).
+
+### Static mode on GitHub Pages
+
+- **This repo:** make it public, set *Settings → Pages → Source* to *GitHub Actions*, and run the *Deploy static site to GitHub Pages* workflow (it also runs on every push to `main`). The site appears at `https://<user>.github.io/timeavailable/`. Set a repository variable `GOOGLE_CLIENT_ID` to enable the Google button.
+- **Any existing Pages site:** copy the `public/` folder into the site repo (e.g. as `timeavailable/`). That's all; `public/config.js` already selects static mode. Put your client ID in that file to enable the Google button.
+
+Server mode is what you get from `node server.js` / the Dockerfile; the same pages detect the mode from `config.js`, which the server generates.
+
 ## Run locally
 
 Requires Node.js 22.13+ (uses the built-in `node:sqlite`; no `npm install` needed).
@@ -76,8 +95,8 @@ Put it behind HTTPS (Caddy, nginx + certbot, Cloudflare…) — Google sign-in r
 1. Go to <https://console.cloud.google.com/> and create (or pick) a project.
 2. **APIs & Services → Library** → enable **Google Calendar API**.
 3. **APIs & Services → OAuth consent screen** → External → fill in app name, support email, developer email. Add the scope `https://www.googleapis.com/auth/calendar.freebusy` (shown as "View your availability in your calendars").
-4. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Under **Authorized JavaScript origins** add your deployed origin, e.g. `https://timeavailable.fly.dev` (and `http://localhost:3000` for local testing). No redirect URI is needed (the app uses the popup token flow).
-5. Copy the client ID into the `GOOGLE_CLIENT_ID` environment variable and redeploy/restart.
+4. **APIs & Services → Credentials → Create credentials → OAuth client ID → Web application**. Under **Authorized JavaScript origins** add your deployed origin, e.g. `https://timeavailable.fly.dev` or `https://linshengliu.com` (and `http://localhost:3000` for local testing). No redirect URI is needed (the app uses the popup token flow).
+5. Server mode: set the `GOOGLE_CLIENT_ID` environment variable and restart. Static mode: put the client ID in `config.js` next to the pages (or the `GOOGLE_CLIENT_ID` repository variable if you deploy with the included workflow).
 
 **Testing vs. published consent screen.** While the consent screen's publishing status is *Testing*, only the Google accounts you list under *Test users* (up to 100) can use the button, and they'll see no warning. To open it to anyone tonight, click **Publish app**: users will then see Google's "unverified app" interstitial (click *Advanced → Go to … (unsafe)*) until you submit the app for verification. Calendar scopes count as *sensitive*, so verification takes a few days; it is not required for the app to work.
 
@@ -86,7 +105,8 @@ Put it behind HTTPS (Caddy, nginx + certbot, Cloudflare…) — Google sign-in r
 - `server.js` — HTTP server, static files, JSON API, SQLite (`polls`, `responses`). Admin and edit keys are random, stored server-side, compared in constant time, and sent only via headers.
 - `public/slots.js` — shared timezone math. A slot is identified by its UTC epoch; grids are rendered in any timezone with `Intl`. DST is handled by converting each date's wall-clock time individually.
 - `public/create.js` — host form, calendar date picker, grid preview with per-slot exclusion.
-- `public/poll.js` — participant painting, Google free/busy import, heat map, best-time search, admin actions.
+- `public/poll.js` — participant painting, Google free/busy import, heat map, best-time search, admin actions; in static mode it reads/writes the link fragment instead of the API.
+- `public/common.js` — DOM helpers, grid rendering, and the link encoder (JSON → deflate-raw → base64url).
 
 ### API
 

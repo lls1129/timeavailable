@@ -146,3 +146,39 @@ function heatColor(frac) {
   const a = 0.15 + 0.85 * frac;
   return `rgba(47, 191, 113, ${a.toFixed(3)})`;
 }
+
+/* ---------- Link-encoded state (static / serverless mode) ---------- */
+const b64u = (bytes) => btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+async function encodeState(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  if (typeof CompressionStream === 'function') {
+    const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    return 'z' + b64u(new Uint8Array(await new Response(stream).arrayBuffer()));
+  }
+  return 'j' + b64u(bytes);
+}
+async function decodeState(str) {
+  if (!str) throw new Error('Empty link');
+  const kind = str[0], data = unb64u(str.slice(1));
+  if (kind === 'z') {
+    if (typeof DecompressionStream !== 'function') throw new Error('This browser is too old to open this link');
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return JSON.parse(await new Response(stream).text());
+  }
+  if (kind === 'j') return JSON.parse(new TextDecoder().decode(data));
+  throw new Error('Unrecognised link');
+}
+// Short stable id for a config (used for localStorage keys in static mode).
+function hashId(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0; return h.toString(36); }
+const CFG = window.TA_CONFIG || {};
+const STATIC_MODE = !!CFG.static;
+// Extract the state blob from any poll link (or bare blob).
+function blobFromLink(text) {
+  const m = String(text).trim().match(/#([zj][A-Za-z0-9_-]+)\s*$/) || String(text).trim().match(/^([zj][A-Za-z0-9_-]+)$/);
+  return m ? m[1] : null;
+}
+async function shareOrCopy(url, title) {
+  if (navigator.share) { try { await navigator.share({ title, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  copyText(url);
+}

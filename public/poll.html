@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Availability — timeavailable</title>
 <meta name="robots" content="noindex">
-<link rel="stylesheet" href="/app.css">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/"><span class="logo">⏱</span> timeavailable</a>
-  <a class="btn btn-sm" href="/">New poll</a>
+  <a class="brand" href="./"><span class="logo">⏱</span> timeavailable</a>
+  <a class="btn btn-sm" href="./">New poll</a>
 </header>
 <main class="container">
   <div id="loading" class="card"><p class="muted">Loading…</p></div>
@@ -72,6 +72,10 @@
             <span id="mine-status" class="muted small"></span>
             <button type="button" class="primary" id="save">Submit availability</button>
           </div>
+          <div id="static-share" class="alert ok hidden" style="margin-top:12px">
+            <b>Saved into the link.</b> Send this updated link back to the group — it contains everyone's answers so far, and the next person should continue from it:
+            <div class="linkbox" style="margin-bottom:0"><input type="text" id="static-link" readonly><button type="button" id="static-copy">Copy</button><button type="button" id="static-sharebtn">Share…</button></div>
+          </div>
         </div>
       </section>
 
@@ -91,13 +95,22 @@
 
         <h3 style="margin-top:18px">Responses</h3>
         <div class="people" id="people"></div>
+        <div id="combine-box" class="hidden" style="margin-top:12px">
+          <button type="button" class="btn-sm" id="combine-toggle">Combine links from others…</button>
+          <div id="combine" class="hidden" style="margin-top:8px">
+            <p class="muted small">If several people answered from the same link in parallel, paste their links here (one per line). Answers are merged by name, newest wins, and this page's link is updated.</p>
+            <textarea id="combine-input" placeholder="https://…/poll.html#z…"></textarea>
+            <div class="row" style="margin-top:6px"><button type="button" class="btn-sm primary" id="combine-go">Combine</button></div>
+          </div>
+        </div>
       </section>
     </div>
   </div>
 </main>
 <footer>timeavailable · Calendar lookups run in your browser; the server only stores the slots you submit.</footer>
-<script src="/slots.js"></script>
-<script src="/common.js"></script>
-<script src="/poll.js"></script>
+<script src="config.js"></script>
+<script src="slots.js"></script>
+<script src="common.js"></script>
+<script src="poll.js"></script>
 </body>
 </html>

@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>timeavailable — find a time that works for everyone</title>
 <meta name="description" content="Pick dates and time slots, share a link, and see when everyone is free. Google Calendar is checked in your browser only.">
-<link rel="stylesheet" href="/app.css">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
 <header class="topbar">
-  <a class="brand" href="/"><span class="logo">⏱</span> timeavailable</a>
+  <a class="brand" href="./"><span class="logo">⏱</span> timeavailable</a>
   <span class="muted small">No accounts. No calendar data stored.</span>
 </header>
 <main class="container narrow">
@@ -89,10 +89,16 @@
   <div class="card hidden" id="done">
     <h2>Your poll is ready 🎉</h2>
     <p>Share this link with everyone who should answer:</p>
-    <div class="linkbox"><input type="text" id="share-link" readonly><button type="button" id="copy-share">Copy</button><a class="btn" id="open-share" target="_blank" rel="noopener">Open</a></div>
-    <p><b>Admin link</b> — keep this private. It lets you remove responses, close or delete the poll:</p>
-    <div class="linkbox"><input type="text" id="admin-link" readonly><button type="button" id="copy-admin">Copy</button></div>
-    <p class="muted small">Both links are also remembered in this browser. There are no accounts, so if you lose the admin link it can't be recovered.</p>
+    <div class="linkbox"><input type="text" id="share-link" readonly><button type="button" id="copy-share">Copy</button><button type="button" id="share-share" class="hidden">Share…</button><a class="btn" id="open-share" target="_blank" rel="noopener">Open</a></div>
+    <div id="admin-box">
+      <p><b>Admin link</b> — keep this private. It lets you remove responses, close or delete the poll:</p>
+      <div class="linkbox"><input type="text" id="admin-link" readonly><button type="button" id="copy-admin">Copy</button></div>
+      <p class="muted small">Both links are also remembered in this browser. There are no accounts, so if you lose the admin link it can't be recovered.</p>
+    </div>
+    <div id="static-box" class="hidden">
+      <p class="privacy"><b>How this works without a server:</b> the whole poll lives inside the link. When someone marks their availability they get an updated link that includes everyone's answers so far — ask them to post it back to the group, and the next person continues from the newest link. Links can also be combined later, so order doesn't matter. Nothing is stored anywhere except in the links themselves.</p>
+      <p class="muted small">This link is also remembered in this browser (see below). Add your own availability by opening it like everyone else.</p>
+    </div>
   </div>
 
   <div class="card" id="recent-card">
@@ -101,8 +107,9 @@
   </div>
 </main>
 <footer>timeavailable · Calendar lookups run in your browser; the server only stores the slots you submit.</footer>
-<script src="/slots.js"></script>
-<script src="/common.js"></script>
-<script src="/create.js"></script>
+<script src="config.js"></script>
+<script src="slots.js"></script>
+<script src="common.js"></script>
+<script src="create.js"></script>
 </body>
 </html>

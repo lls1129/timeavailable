@@ -1,24 +1,59 @@
 (() => {
-  const pollId = location.pathname.split('/').filter(Boolean)[1];
+  // Two storage modes share this page:
+  //  - server mode: /p/<id>, data lives in the server's database
+  //  - static mode: poll.html#<blob>, the poll and every answer live inside the link itself
+  const STATIC = STATIC_MODE;
+  let pollId = STATIC ? null : location.pathname.split('/').filter(Boolean)[1];
   const params = new URLSearchParams(location.search);
-  const S = { poll: null, slots: [], viewTz: browserTz(), brush: 1, mine: new Map(), rid: null, editKey: null, adminKey: null, pinned: null, dirty: false, config: null, google: null };
+  const S = { poll: null, slots: [], viewTz: browserTz(), brush: 1, mine: new Map(), rid: null, editKey: null, adminKey: null, pinned: null, dirty: false, google: null };
 
-  // Admin key: from URL (then remembered) or from local storage.
-  if (params.get('admin')) { S.adminKey = params.get('admin'); }
-  else { const a = store(`ta:admin:${pollId}`); if (a && a.adminKey) S.adminKey = a.adminKey; }
+  if (!STATIC) {
+    if (params.get('admin')) { S.adminKey = params.get('admin'); }
+    else { const a = store(`ta:admin:${pollId}`); if (a && a.adminKey) S.adminKey = a.adminKey; }
+  }
   const hdrs = () => (S.adminKey ? { 'X-Admin-Key': S.adminKey } : {});
+
+  // ---- static-mode (de)serialisation ----
+  const slotsToBits = (slots, list) => list.map((t) => slots[t] || slots.get?.(t) || 0).join('').replace(/0+$/, '');
+  const bitsToSlots = (bits, list) => { const o = {}; for (let i = 0; i < bits.length && i < list.length; i++) { const v = Number(bits[i]); if (v) o[list[i]] = v; } return o; };
+  async function readStatic(blob) {
+    const st = await decodeState(blob);
+    if (!st || !st.c || !Array.isArray(st.c.dates)) throw new Error('This link does not contain a poll.');
+    const config = st.c;
+    if (!Slots.isValidTz(config.tz)) throw new Error('Invalid timezone in link');
+    const slots = Slots.generate(config);
+    const responses = (st.r || []).map(([name, bits, updatedAt], i) => ({ id: 'r' + i, name: String(name), slots: bitsToSlots(String(bits || ''), slots), updatedAt: Number(updatedAt) || 0 }));
+    return { config, slots, responses };
+  }
+  async function writeStatic() {
+    const r = S.poll.responses.map((x) => [x.name, slotsToBits(x.slots, S.slots), x.updatedAt]);
+    const blob = await encodeState({ c: S.poll.config, r });
+    history.replaceState(null, '', location.pathname + location.search + '#' + blob);
+    return location.href;
+  }
 
   async function load(initial) {
     try {
-      const poll = await api('GET', `/api/polls/${pollId}`, undefined, hdrs());
-      S.poll = poll;
-      S.slots = Slots.generate(poll.config);
-      if (poll.isAdmin) store(`ta:admin:${pollId}`, { adminKey: S.adminKey, title: poll.config.title, createdAt: poll.createdAt });
-      else if (S.adminKey) { S.adminKey = null; storeRemove(`ta:admin:${pollId}`); }
+      if (STATIC) {
+        const { config, slots, responses } = await readStatic(location.hash.slice(1));
+        pollId = hashId(JSON.stringify(config));
+        S.poll = { id: pollId, config, responses, isAdmin: false, createdAt: 0 };
+        S.slots = slots;
+        const saved = store(`ta:resp:${pollId}`);
+        const mineResp = saved && responses.find((x) => x.name.toLowerCase() === String(saved.name || '').toLowerCase());
+        S.rid = mineResp ? mineResp.id : null;
+      } else {
+        const poll = await api('GET', `/api/polls/${pollId}`, undefined, hdrs());
+        S.poll = poll;
+        S.slots = Slots.generate(poll.config);
+        if (poll.isAdmin) store(`ta:admin:${pollId}`, { adminKey: S.adminKey, title: poll.config.title, createdAt: poll.createdAt });
+        else if (S.adminKey) { S.adminKey = null; storeRemove(`ta:admin:${pollId}`); }
+      }
       if (initial) initOnce();
       renderAll();
     } catch (e) {
-      if (initial) { $('#loading').innerHTML = `<h1>Poll not found</h1><p class="muted">${e.message}</p><a class="btn primary" href="/">Create a new poll</a>`; }
+      if (initial) { $('#loading').innerHTML = `<h1>Poll not found</h1><p class="muted">${String(e.message).replace(/</g, '&lt;')}</p><a class="btn primary" href="./">Create a new poll</a>`; }
+      else toast(e.message, 'error');
     }
   }
 
@@ -33,15 +68,16 @@
 
     // restore own response / draft
     const saved = store(`ta:resp:${pollId}`);
-    if (saved && S.poll.responses.some((r) => r.id === saved.rid)) {
-      S.rid = saved.rid; S.editKey = saved.editKey;
-      const r = S.poll.responses.find((x) => x.id === saved.rid);
-      $('#name').value = r.name;
-      S.mine = new Map(Object.entries(r.slots).map(([k, v]) => [Number(k), v]));
+    const mineResp = saved && (STATIC ? S.poll.responses.find((x) => x.id === S.rid) : S.poll.responses.find((r) => r.id === saved.rid));
+    if (mineResp) {
+      if (!STATIC) { S.rid = saved.rid; S.editKey = saved.editKey; }
+      $('#name').value = mineResp.name;
+      S.mine = new Map(Object.entries(mineResp.slots).map(([k, v]) => [Number(k), v]));
     } else {
-      storeRemove(`ta:resp:${pollId}`);
+      if (!STATIC) storeRemove(`ta:resp:${pollId}`);
       const draft = store(`ta:draft:${pollId}`);
       if (draft) { $('#name').value = draft.name || ''; S.mine = new Map(Object.entries(draft.slots || {}).map(([k, v]) => [Number(k), v])); }
+      else if (saved && saved.name) $('#name').value = saved.name;
     }
 
     $$('#brush button').forEach((b) => b.addEventListener('click', () => { S.brush = Number(b.dataset.level); $$('#brush button').forEach((x) => x.classList.toggle('active', x === b)); }));
@@ -63,18 +99,25 @@
     $('#count-maybe').addEventListener('change', renderBest);
     $('#min-len').addEventListener('change', renderBest);
     $('#google-more').addEventListener('click', () => $('#google-extra').classList.toggle('hidden'));
+    $('#static-copy').addEventListener('click', () => copyText($('#static-link').value));
+    $('#static-sharebtn').addEventListener('click', () => shareOrCopy($('#static-link').value, S.poll.config.title));
+    $('#combine-box').classList.toggle('hidden', !STATIC);
+    $('#combine-toggle').addEventListener('click', () => $('#combine').classList.toggle('hidden'));
+    $('#combine-go').addEventListener('click', combineLinks);
+    if (STATIC) $('#mine-card').querySelector('p.muted.small').textContent = 'Click or drag over the slots when you\'re free. Clicking a painted slot again clears it. When you save, your answer is written into the link.';
 
-    // heat scale legend
     $('#heat-scale').replaceChildren(...[0.1, 0.3, 0.5, 0.7, 0.9].map((f) => { const i = el('i'); i.style.background = heatColor(f); return i; }));
 
-    api('GET', '/api/config').then((c) => { if (c.googleClientId) setupGoogle(c.googleClientId); }).catch(() => {});
+    if (CFG.googleClientId) setupGoogle(CFG.googleClientId);
     window.addEventListener('beforeunload', (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ''; } });
-    setInterval(() => { if (document.visibilityState === 'visible') load(false); }, 30000);
+    if (!STATIC) setInterval(() => { if (document.visibilityState === 'visible') load(false); }, 30000);
+    if (STATIC) window.addEventListener('hashchange', () => load(false));
   }
 
   function markDirty() {
     S.dirty = true;
     $('#mine-status').textContent = 'Unsaved changes';
+    $('#static-share').classList.add('hidden');
     store(`ta:draft:${pollId}`, { name: $('#name').value, slots: Object.fromEntries(S.mine) });
   }
 
@@ -96,41 +139,76 @@
   }
 
   // ---------- own grid ----------
-  let mineCells = null;
   function renderMine() {
     const layout = layoutSlots(S.slots, S.viewTz, S.poll.config.slotMin);
     const { grid, cells } = renderGrid($('#mine-grid'), layout, { datesOnly: datesOnly(), slotMin: S.poll.config.slotMin });
-    mineCells = cells;
     for (const [t, c] of cells) { const l = S.mine.get(t); if (l) c.classList.add('l' + l); }
     enablePainting(grid, cells, (t) => S.mine.get(t) || 0, (t, l) => { if (l) S.mine.set(t, l); else S.mine.delete(t); }, () => (S.poll.config.allowMaybe ? S.brush : 1), markDirty);
-    if (!S.dirty) $('#mine-status').textContent = S.rid ? 'Submitted — you can edit and resubmit.' : '';
+    if (!S.dirty) $('#mine-status').textContent = S.rid ? (STATIC ? 'Saved in this link — you can edit and save again.' : 'Submitted — you can edit and resubmit.') : '';
   }
 
   async function save() {
     const name = $('#name').value.trim();
     if (!name) { toast('Please enter your name', 'error'); $('#name').focus(); return; }
     const btn = $('#save'); btn.disabled = true;
-    const body = { name, slots: Object.fromEntries(S.mine) };
+    const slots = Object.fromEntries(S.mine);
     try {
-      if (S.rid && S.editKey) {
-        await api('PUT', `/api/polls/${pollId}/responses/${S.rid}`, body, { 'X-Edit-Key': S.editKey, ...hdrs() });
+      if (STATIC) {
+        const existing = S.poll.responses.find((x) => x.name.toLowerCase() === name.toLowerCase());
+        if (existing && existing.id !== S.rid && !confirm(`"${existing.name}" already answered. Replace their answer with yours?`)) { btn.disabled = false; return; }
+        const rec = { id: existing ? existing.id : 'r' + S.poll.responses.length, name, slots, updatedAt: Date.now() };
+        if (existing) Object.assign(existing, rec); else S.poll.responses.push(rec);
+        const link = await writeStatic();
+        store(`ta:resp:${pollId}`, { name });
+        storeRemove(`ta:draft:${pollId}`);
+        S.dirty = false;
+        $('#static-link').value = link; $('#static-share').classList.remove('hidden');
+        $('#static-sharebtn').classList.toggle('hidden', !navigator.share);
+        await load(false);
+        $('#static-share').scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
-        const r = await api('POST', `/api/polls/${pollId}/responses`, body);
-        S.rid = r.id; S.editKey = r.editKey;
+        const body = { name, slots };
+        if (S.rid && S.editKey) {
+          await api('PUT', `/api/polls/${pollId}/responses/${S.rid}`, body, { 'X-Edit-Key': S.editKey, ...hdrs() });
+        } else {
+          const r = await api('POST', `/api/polls/${pollId}/responses`, body);
+          S.rid = r.id; S.editKey = r.editKey;
+        }
+        store(`ta:resp:${pollId}`, { rid: S.rid, editKey: S.editKey, name });
+        storeRemove(`ta:draft:${pollId}`);
+        S.dirty = false;
+        toast('Saved! Your availability is in.', 'ok');
+        await load(false);
       }
-      store(`ta:resp:${pollId}`, { rid: S.rid, editKey: S.editKey, name });
-      storeRemove(`ta:draft:${pollId}`);
-      S.dirty = false;
-      toast('Saved! Your availability is in.', 'ok');
-      await load(false);
     } catch (e) { toast(e.message, 'error'); }
     finally { btn.disabled = false; }
+  }
+
+  async function combineLinks() {
+    const lines = $('#combine-input').value.split(/\s+/).map((x) => x.trim()).filter(Boolean);
+    let merged = 0, skipped = 0;
+    const mine = JSON.stringify(S.poll.config);
+    for (const line of lines) {
+      const blob = blobFromLink(line); if (!blob) { skipped++; continue; }
+      try {
+        const { config, responses } = await readStatic(blob);
+        if (JSON.stringify(config) !== mine) { skipped++; continue; }
+        for (const r of responses) {
+          const ex = S.poll.responses.find((x) => x.name.toLowerCase() === r.name.toLowerCase());
+          if (ex) { if (r.updatedAt > ex.updatedAt) { ex.slots = r.slots; ex.updatedAt = r.updatedAt; merged++; } }
+          else { S.poll.responses.push({ ...r, id: 'r' + S.poll.responses.length }); merged++; }
+        }
+      } catch { skipped++; }
+    }
+    if (merged) { await writeStatic(); await load(false); $('#static-link').value = location.href; $('#static-share').classList.remove('hidden'); }
+    toast(`${merged} answer${merged === 1 ? '' : 's'} merged${skipped ? `, ${skipped} link${skipped === 1 ? '' : 's'} skipped (not this poll)` : ''}.`, merged ? 'ok' : 'error');
+    if (merged) $('#combine-input').value = '';
   }
 
   // ---------- group grid ----------
   function tally() {
     const N = S.poll.responses.length;
-    const per = new Map(); // t -> { avail: [], maybe: [] }
+    const per = new Map();
     for (const t of S.slots) per.set(t, { avail: [], maybe: [] });
     for (const r of S.poll.responses) for (const [k, v] of Object.entries(r.slots)) {
       const e = per.get(Number(k)); if (!e) continue;
@@ -177,11 +255,16 @@
   function renderPeople() {
     const box = $('#people');
     if (!S.poll.responses.length) { box.replaceChildren(el('span', { class: 'muted small' }, 'No responses yet. Be the first!')); return; }
+    const canRemove = S.poll.isAdmin || STATIC;
     box.replaceChildren(...S.poll.responses.map((r) => el('span', { class: 'person' + (r.id === S.rid ? ' avail' : '') }, r.name,
-      S.poll.isAdmin ? el('button', { class: 'rm', title: 'Remove this response', onclick: async () => {
+      canRemove ? el('button', { class: 'rm', title: 'Remove this response', onclick: async () => {
         if (!confirm(`Remove ${r.name}'s response?`)) return;
-        try { await api('DELETE', `/api/polls/${pollId}/responses/${r.id}`, undefined, hdrs()); if (r.id === S.rid) { S.rid = null; S.editKey = null; storeRemove(`ta:resp:${pollId}`); } await load(false); }
-        catch (e) { toast(e.message, 'error'); }
+        try {
+          if (STATIC) { S.poll.responses = S.poll.responses.filter((x) => x !== r); await writeStatic(); $('#static-link').value = location.href; $('#static-share').classList.remove('hidden'); }
+          else await api('DELETE', `/api/polls/${pollId}/responses/${r.id}`, undefined, hdrs());
+          if (r.id === S.rid) { S.rid = null; S.editKey = null; storeRemove(`ta:resp:${pollId}`); }
+          await load(false);
+        } catch (e) { toast(e.message, 'error'); }
       } }, '×') : null)));
   }
 
@@ -205,13 +288,12 @@
     const list = $('#best');
     if (!N) { list.replaceChildren(el('li', { class: 'muted small' }, 'Waiting for responses.')); return; }
     const count = (t) => { const e = per.get(t); return e.avail.length + (countMaybe ? e.maybe.length : 0); };
-    // consecutive runs of qualifying slots
     const runs = [];
     let cur = null;
     for (const t of S.slots) {
       const ok = count(t) >= k;
-      if (ok && cur && t === cur.end) { cur.end = t + slotMs(); cur.min = Math.min(cur.min, count(t)); cur.sum += count(t); cur.n++; }
-      else if (ok) { cur = { start: t, end: t + slotMs(), min: count(t), sum: count(t), n: 1 }; runs.push(cur); }
+      if (ok && cur && t === cur.end) { cur.end = t + slotMs(); cur.min = Math.min(cur.min, count(t)); cur.n++; }
+      else if (ok) { cur = { start: t, end: t + slotMs(), min: count(t), n: 1 }; runs.push(cur); }
       else cur = null;
     }
     const good = runs.filter((r) => r.end - r.start >= minLen * 60000);
@@ -249,7 +331,7 @@
     };
     document.head.append(s);
   }
-  function busyBtn(b) { const btn = $('#google-import'); btn.disabled = b; }
+  function busyBtn(b) { $('#google-import').disabled = b; }
 
   async function onToken(resp) {
     if (!resp || resp.error || !resp.access_token) { toast('Google did not grant access.', 'error'); busyBtn(false); return; }
@@ -261,7 +343,6 @@
       toast('Could not read free/busy from Google: ' + e.message, 'error');
     } finally {
       busyBtn(false);
-      // Drop the grant right away: we only needed it once.
       try { google.accounts.oauth2.revoke(token, () => {}); } catch { /* ignore */ }
     }
   }
@@ -269,7 +350,7 @@
   async function fetchBusy(token) {
     const ids = [{ id: 'primary' }, ...$('#extra-cals').value.split(',').map((x) => x.trim()).filter(Boolean).map((id) => ({ id }))];
     const first = S.slots[0], last = S.slots[S.slots.length - 1] + slotMs();
-    const CHUNK = 42 * 86400000; // keep each query comfortably sized
+    const CHUNK = 42 * 86400000;
     const busy = [];
     for (let from = first; from < last; from += CHUNK) {
       const to = Math.min(from + CHUNK, last);
@@ -297,7 +378,7 @@
       else { free++; if (!S.mine.has(t)) S.mine.set(t, 1); }
     }
     markDirty(); renderMine();
-    toast(`Marked ${free} of ${S.slots.length} slots as free from your calendar. Adjust anything, then submit.`, 'ok');
+    toast(`Marked ${free} of ${S.slots.length} slots as free from your calendar. Adjust anything, then save.`, 'ok');
   }
 
   load(true);

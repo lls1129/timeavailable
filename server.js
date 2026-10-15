@@ -290,6 +290,14 @@ function serveStatic(req, res, url) {
   if (p === '/') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'));
   if (/^\/p\/[A-Za-z0-9_-]+\/?$/.test(p)) return serveFile(res, path.join(PUBLIC_DIR, 'poll.html'));
   if (p === '/healthz') return send(res, 200, 'ok');
+  // Pages use relative asset URLs (so they also work on static hosts); map /p/<asset> back to /<asset>.
+  const m = p.match(/^\/p\/([^/]+\.[a-z]+)$/);
+  if (m) p = '/' + m[1];
+  if (p === '/config.js') {
+    const body = `window.TA_CONFIG = ${JSON.stringify({ static: false, googleClientId: GOOGLE_CLIENT_ID })};\n`;
+    res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache', ...SECURITY_HEADERS });
+    return res.end(body);
+  }
   const file = path.normalize(path.join(PUBLIC_DIR, p));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 404, 'Not found');
   fs.stat(file, (err, st) => {

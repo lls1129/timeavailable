@@ -120,17 +120,36 @@
   }
 
   // ---- submit ----
+  function validateStatic(cfg) {
+    if (!cfg.title.trim()) throw new Error('Title is required');
+    if (!cfg.dates.length) throw new Error('Pick at least one date');
+    if (!(cfg.slotMin >= 5) || cfg.endMin <= cfg.startMin) throw new Error('Check the start/end times and slot length');
+    const n = Slots.generate(cfg).length;
+    if (!n) throw new Error('The grid has no time slots');
+    if (n > 8000) throw new Error(`Too many time slots (${n}, max 8000). Use longer slots or fewer dates.`);
+  }
   $('#create').addEventListener('submit', async (e) => {
     e.preventDefault();
     const err = $('#create-error'); err.classList.add('hidden');
     const cfg = currentConfig();
     const btn = $('#submit'); btn.disabled = true;
     try {
-      const { id, adminKey } = await api('POST', '/api/polls', cfg);
-      const share = `${location.origin}/p/${id}`;
-      const admin = `${share}?admin=${adminKey}`;
-      store(`ta:admin:${id}`, { adminKey, title: cfg.title, createdAt: Date.now() });
+      let share, admin = '';
+      if (STATIC_MODE) {
+        const clean = { title: cfg.title.trim(), description: cfg.description.trim(), tz: cfg.tz, dates: cfg.dates, startMin: cfg.startMin, endMin: cfg.endMin, slotMin: cfg.slotMin, allowMaybe: cfg.allowMaybe, excluded: cfg.excluded.sort((a, b) => a - b) };
+        validateStatic(clean);
+        const blob = await encodeState({ c: clean, r: [] });
+        share = new URL('poll.html#' + blob, location.href).href;
+        store(`ta:static:${hashId(JSON.stringify(clean))}`, { title: clean.title, link: share, createdAt: Date.now() });
+      } else {
+        const { id, adminKey } = await api('POST', '/api/polls', cfg);
+        share = `${location.origin}/p/${id}`;
+        admin = `${share}?admin=${adminKey}`;
+        store(`ta:admin:${id}`, { adminKey, title: cfg.title, createdAt: Date.now() });
+      }
       $('#share-link').value = share; $('#open-share').href = share; $('#admin-link').value = admin;
+      $('#admin-box').classList.toggle('hidden', STATIC_MODE); $('#static-box').classList.toggle('hidden', !STATIC_MODE);
+      $('#share-share').classList.toggle('hidden', !navigator.share);
       $('#done').classList.remove('hidden'); $('#create').classList.add('hidden');
       $('#done').scrollIntoView({ behavior: 'smooth' });
       renderRecent();
@@ -139,6 +158,7 @@
     } finally { btn.disabled = false; }
   });
   $('#copy-share').addEventListener('click', () => copyText($('#share-link').value));
+  $('#share-share').addEventListener('click', () => shareOrCopy($('#share-link').value, $('#title').value));
   $('#copy-admin').addEventListener('click', () => copyText($('#admin-link').value));
 
   function renderRecent() {
@@ -146,13 +166,14 @@
     try {
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith('ta:admin:')) { const v = store(k); if (v) items.push({ id: k.slice(9), ...v }); }
+        if (k && k.startsWith('ta:admin:')) { const v = store(k); if (v) items.push({ href: `/p/${k.slice(9)}?admin=${v.adminKey}`, ...v }); }
+        if (k && k.startsWith('ta:static:')) { const v = store(k); if (v && v.link) items.push({ href: v.link, ...v }); }
       }
     } catch { /* ignore */ }
     items.sort((a, b) => b.createdAt - a.createdAt);
     $('#recent-card').classList.toggle('hidden', !items.length);
     $('#recent').replaceChildren(...items.map((it) => el('div', { class: 'row', style: 'justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)' },
-      el('a', { href: `/p/${it.id}?admin=${it.adminKey}` }, it.title || it.id),
+      el('a', { href: it.href }, it.title || 'Untitled'),
       el('span', { class: 'muted small' }, new Date(it.createdAt).toLocaleDateString()))));
   }
 
