@@ -1,0 +1,13 @@
+// Cloudflare Workers config. Deploy from the dashboard (Workers & Pages → Create → Import a repository)
+// or with `npx wrangler deploy`. Storage: one Durable Object (SQLite) per poll — nothing else to create.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "timeavailable",
+  "main": "worker.js",
+  "compatibility_date": "2025-10-01",
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+  "durable_objects": { "bindings": [{ "name": "POLLS", "class_name": "PollStore" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PollStore"] }],
+  "vars": { "GOOGLE_CLIENT_ID": "" },
+  "observability": { "enabled": true }
+}

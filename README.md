@@ -2,8 +2,8 @@
 
 A small, self-hosted web app for finding a time that works for everyone (think When2Meet, without accounts).
 
-- **Host** picks any set of dates (click or drag on a calendar, any combination), a daily time window, the slot length (15 min … several hours, or custom), or "whole days only", and can remove individual slots from the grid (lunch, early finish…). They get a share link and a private admin link.
-- **Participants** open the link, type a name, and drag across a calendar-style week grid to select every time they're free (any rectangle of days × times; drag again to unselect; "available" or "if needed"). **Fill from Google Calendar** overlays their busy times on the grid and selects everything else. They can come back and edit their answer from the same browser.
+- **Host** picks any set of dates (click or drag on a calendar, any combination), a daily time window, the meeting length (e.g. 3 hours) and the start-time step (every 15/30/60 min — a 3-hour meeting can start at 9:00, 9:30, 10:00…), or "whole days only", and can remove individual slots from the grid (lunch, early finish…). They get a share link and a private admin link.
+- **Participants** open the link, sign in with just their name (optionally a password, so nobody else can edit their answer), and drag across a calendar-style week grid to select every time they're free (any rectangle of days × times; drag again to unselect; "available" or "if needed"). **Fill from Google Calendar** overlays their busy times on the grid and selects everything else. They can come back from any device, sign in with the same name, and edit.
 - **Everyone** sees the group calendar with the number of free people in each slot, who is free in any slot, one person's availability on tap, and a ranked list of the best windows ("at least *k* people, for at least *n* minutes"). Times can be shown in any timezone; long polls page through days like a calendar.
 - **The host picks the final time** by dragging over the group calendar. Everyone then sees a "Scheduled" banner with who is free, plus *Add to Google Calendar* and *.ics* links.
 
@@ -19,24 +19,33 @@ The server **never** learns anything about anyone's calendar. Concretely:
 
 The page is served with a strict Content-Security-Policy whose `connect-src` only allows this server, Google's sign-in endpoints, and the `freeBusy` endpoint. The code is ~600 lines of plain JavaScript with no dependencies, so this is easy to audit: see `server.js`, `public/poll.js`.
 
-## Two ways to host it
+## Three ways to host it
 
-| | Server mode (`server.js`) | Static mode (any file host, e.g. GitHub Pages) |
-| --- | --- | --- |
-| Needs | Node 22 + a persistent disk | Nothing — just the files in `public/` |
-| Where answers live | SQLite on the server | **Inside the link itself** |
-| How people answer | Open the link, submit | Open the link, save, **post the updated link back** |
-| Admin link, close poll | Yes | No (anyone with the link can edit it) |
-| Google Calendar import | Yes | Yes (same browser-only flow) |
+| | Cloudflare Worker (`worker.js`) — **recommended** | Node server (`server.js`) | Static mode (GitHub Pages, any file host) |
+| --- | --- | --- | --- |
+| Needs | A free Cloudflare account, set up from the browser | Node 22 + a persistent disk | Nothing — just the files in `public/` |
+| Where answers live | Durable Object SQLite, one per poll | SQLite on the server | **Inside the link itself** |
+| How people answer | Sign in with a name, save, come back any time | Same | Open the link, save, **post the updated link back** |
+| Admin link, close poll, pick final time | Yes | Yes | Final time yes (host's browser), no admin link |
+| Google Calendar import | Yes | Yes | Yes (same browser-only flow) |
 
-Static mode is the "no server, online in five minutes" option: the poll definition and every answer are compressed into the URL fragment (`poll.html#z…`). A poll with a dozen answers is well under 1 KB. Nothing is ever uploaded anywhere. The workflow is: the host shares link A; each person who saves gets link B that includes all answers so far and posts it back; the next person continues from the newest link. If people answer in parallel from the same link, any poll page can **Combine links from others** (merge by name, newest wins).
+All three serve the same pages; `config.js` tells the page which mode it is in. The API logic is one file, `lib/api.js`, shared by the Worker and the Node server.
+
+### Cloudflare Worker (free, no command line needed)
+
+1. Sign up / log in at <https://dash.cloudflare.com>.
+2. **Workers & Pages → Create → Import a repository** (connect your GitHub account if asked) and pick this repo. Wrangler config is in `wrangler.jsonc`, so keep the defaults: build command empty, deploy command `npx wrangler deploy`. Click **Deploy**.
+3. The app is live at `https://timeavailable.<your-subdomain>.workers.dev`. Every push to `main` redeploys. Storage needs nothing extra: each poll is a Durable Object with its own SQLite database (included in the free plan).
+4. Optional: set the Worker variable `GOOGLE_CLIENT_ID` (Settings → Variables) or edit `vars` in `wrangler.jsonc` to enable the Google Calendar button; add the `workers.dev` origin to the OAuth client. A custom domain can be attached under Settings → Domains.
+
+From a computer, the same thing is `npx wrangler login && npx wrangler deploy`.
 
 ### Static mode on GitHub Pages
 
+Static mode is the "no backend at all" option: the poll definition and every answer are compressed into the URL fragment (`poll.html#z…`). A poll with a dozen answers is well under 1 KB. Nothing is ever uploaded anywhere. The workflow is: the host shares link A; each person who saves gets link B that includes all answers so far and posts it back; the next person continues from the newest link. If people answer in parallel from the same link, any poll page can **Combine links from others** (merge by name, newest wins).
+
 - **This repo:** every push to `main` that touches `public/` rebuilds the `gh-pages` branch (workflow in `.github/workflows/pages.yml`), which GitHub Pages serves at `https://<user>.github.io/timeavailable/`. The repo must be public (or on a paid plan). Set a repository variable `GOOGLE_CLIENT_ID` to enable the Google button.
 - **Any existing Pages site:** copy the `public/` folder into the site repo (e.g. as `timeavailable/`). That's all; `public/config.js` already selects static mode. Put your client ID in that file to enable the Google button.
-
-Server mode is what you get from `node server.js` / the Dockerfile; the same pages detect the mode from `config.js`, which the server generates.
 
 ## Run locally
 
@@ -103,7 +112,8 @@ Put it behind HTTPS (Caddy, nginx + certbot, Cloudflare…) — Google sign-in r
 
 ## How it works (for auditing)
 
-- `server.js` — HTTP server, static files, JSON API, SQLite (`polls`, `responses`). Admin and edit keys are random, stored server-side, compared in constant time, and sent only via headers.
+- `lib/api.js` — the whole API: validation, sign-in (PBKDF2 password hashes), admin/edit keys (random, compared in constant time, sent only via headers), security headers. Platform-neutral: it talks to a small async storage adapter.
+- `server.js` — Node HTTP server + `node:sqlite` adapter. `worker.js` + `wrangler.jsonc` — Cloudflare Worker + Durable Object SQLite adapter, static files from the assets binding.
 - `public/slots.js` — shared timezone math. A slot is identified by its UTC epoch; grids are rendered in any timezone with `Intl`. DST is handled by converting each date's wall-clock time individually.
 - `public/create.js` — host form, calendar date picker, grid preview with per-slot exclusion.
 - `public/poll.js` — participant painting, Google free/busy import, heat map, best-time search, admin actions; in static mode it reads/writes the link fragment instead of the API.
@@ -118,8 +128,9 @@ Put it behind HTTPS (Caddy, nginx + certbot, Cloudflare…) — Google sign-in r
 | `GET` | `/api/polls/:id` | optional `X-Admin-Key` | Poll config + all responses (names and slots only) |
 | `PATCH` | `/api/polls/:id` | `X-Admin-Key` | Edit title/description, close/reopen |
 | `DELETE` | `/api/polls/:id` | `X-Admin-Key` | Delete poll and responses |
-| `POST` | `/api/polls/:id/responses` | – | Submit `{name, slots}` → `{id, editKey}` |
-| `PUT` | `/api/polls/:id/responses/:rid` | `X-Edit-Key` or admin | Update own response |
+| `POST` | `/api/polls/:id/login` | – | Sign in `{name, password?}`; creates the response if the name is new → `{id, editKey, slots, locked, isNew}`. A password given the first time locks the name; a locked name requires it. |
+| `POST` | `/api/polls/:id/responses` | – | One-shot submit `{name, slots}` → `{id, editKey}` (no sign-in) |
+| `PUT` | `/api/polls/:id/responses/:rid` | `X-Edit-Key` or admin | Update own slots (and name) |
 | `DELETE` | `/api/polls/:id/responses/:rid` | `X-Edit-Key` or admin | Remove response |
 
 `slots` is an object mapping slot epoch (ms) → `1` (available) or `2` (if needed). Anything not in the poll's grid is dropped.

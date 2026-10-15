@@ -21,7 +21,7 @@ const call = async (method, p, body, headers = {}) => {
   return { status: res.status, json, text, headers: res.headers };
 };
 
-const cfg = { title: 'Kickoff', description: 'hi', tz: 'America/New_York', dates: ['2026-11-01', '2026-10-31'], startMin: 540, endMin: 720, slotMin: 30 };
+const cfg = { title: 'Kickoff', description: 'hi', tz: 'America/New_York', dates: ['2026-11-01', '2026-10-31'], startMin: 540, endMin: 720, slotMin: 30, durationMin: 60 };
 
 test('timezone math handles DST (America/New_York, Nov 1 2026 fall back)', () => {
   // 2026-11-01 09:00 EST == 14:00 UTC (DST ends 2026-11-01 02:00); 2026-10-31 09:00 EDT == 13:00 UTC
@@ -52,6 +52,10 @@ test('full poll lifecycle', async () => {
   assert.strictEqual(bad.status, 400);
   const badTz = await call('POST', '/api/polls', { ...cfg, tz: 'Mars/Olympus' });
   assert.strictEqual(badTz.status, 400);
+  const badDur = await call('POST', '/api/polls', { ...cfg, durationMin: 45 });
+  assert.strictEqual(badDur.status, 400, 'duration must be a multiple of the step');
+  const longDur = await call('POST', '/api/polls', { ...cfg, durationMin: 240 });
+  assert.strictEqual(longDur.status, 400, 'duration longer than the window');
 
   const created = await call('POST', '/api/polls', { ...cfg, excluded: [Slots.zonedToUtc('2026-10-31', 540, cfg.tz), 12345] });
   assert.strictEqual(created.status, 201);
@@ -61,6 +65,7 @@ test('full poll lifecycle', async () => {
   assert.strictEqual(got.status, 200);
   assert.strictEqual(got.json.isAdmin, false);
   assert.deepStrictEqual(got.json.config.dates, ['2026-10-31', '2026-11-01']);
+  assert.strictEqual(got.json.config.durationMin, 60);
   assert.strictEqual(got.json.config.excluded.length, 1, 'unknown excluded slots are dropped');
   assert.strictEqual(Slots.generate(got.json.config).length, 11);
   assert.ok(!('adminKey' in got.json));
@@ -70,15 +75,37 @@ test('full poll lifecycle', async () => {
 
   const slots = Slots.generate(got.json.config);
   const mine = { [slots[1]]: 1, [slots[2]]: 2, [slots[3]]: 7, '999': 1 };
-  const r1 = await call('POST', `/api/polls/${id}/responses`, { name: 'Ada', slots: mine });
-  assert.strictEqual(r1.status, 201);
+  // sign in with a name (creates the response), then save slots
+  const login = await call('POST', `/api/polls/${id}/login`, { name: 'Ada' });
+  assert.strictEqual(login.status, 201);
+  assert.strictEqual(login.json.isNew, true);
+  const r1 = login;
+  const upd0 = await call('PUT', `/api/polls/${id}/responses/${r1.json.id}`, { slots: mine }, { 'X-Edit-Key': r1.json.editKey });
+  assert.strictEqual(upd0.status, 200);
+  // same name again (case-insensitive) signs in to the existing response
+  const again = await call('POST', `/api/polls/${id}/login`, { name: 'ada' });
+  assert.strictEqual(again.status, 200);
+  assert.strictEqual(again.json.id, r1.json.id);
+  assert.deepStrictEqual(again.json.slots, { [slots[1]]: 1, [slots[2]]: 2 });
+  // set a password on first use, then it is required
+  const setPw = await call('POST', `/api/polls/${id}/login`, { name: 'Ada', password: 'secret' });
+  assert.strictEqual(setPw.status, 200);
+  assert.strictEqual(setPw.json.locked, true);
+  const noPw = await call('POST', `/api/polls/${id}/login`, { name: 'Ada' });
+  assert.strictEqual(noPw.status, 401);
+  assert.strictEqual(noPw.json.needsPassword, true);
+  const wrongPw = await call('POST', `/api/polls/${id}/login`, { name: 'Ada', password: 'nope' });
+  assert.strictEqual(wrongPw.status, 403);
+  const okPw = await call('POST', `/api/polls/${id}/login`, { name: 'Ada', password: 'secret' });
+  assert.strictEqual(okPw.status, 200);
   const dup = await call('POST', `/api/polls/${id}/responses`, { name: 'ada', slots: {} });
   assert.strictEqual(dup.status, 409);
 
   let state = (await call('GET', `/api/polls/${id}`)).json;
   assert.strictEqual(state.responses.length, 1);
+  assert.strictEqual(state.responses[0].locked, true);
   assert.deepStrictEqual(state.responses[0].slots, { [slots[1]]: 1, [slots[2]]: 2 }, 'invalid levels and unknown slots dropped');
-  assert.ok(!('editKey' in state.responses[0]));
+  assert.ok(!('editKey' in state.responses[0]) && !('passHash' in state.responses[0]));
 
   const noKey = await call('PUT', `/api/polls/${id}/responses/${r1.json.id}`, { name: 'Ada L', slots: {} });
   assert.strictEqual(noKey.status, 403);
@@ -90,7 +117,7 @@ test('full poll lifecycle', async () => {
   const closeNoAdmin = await call('PATCH', `/api/polls/${id}`, { closed: true });
   assert.strictEqual(closeNoAdmin.status, 403);
   await call('PATCH', `/api/polls/${id}`, { closed: true }, { 'X-Admin-Key': adminKey });
-  const whileClosed = await call('POST', `/api/polls/${id}/responses`, { name: 'Bob', slots: {} });
+  const whileClosed = await call('POST', `/api/polls/${id}/login`, { name: 'Bob' });
   assert.strictEqual(whileClosed.status, 403);
   await call('PATCH', `/api/polls/${id}`, { closed: false }, { 'X-Admin-Key': adminKey });
 

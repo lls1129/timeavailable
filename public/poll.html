@@ -57,8 +57,18 @@
       <section class="card" id="mine-card">
         <h2>Your availability</h2>
         <div id="closed-msg" class="alert hidden">This poll is closed. You can still see the results.</div>
+        <div id="signin" class="hidden">
+          <p class="muted small">Enter your name to start, or to come back and edit what you entered before. A password is optional — add one if you don't want others to edit your answer.</p>
+          <div class="grid-2">
+            <div class="field"><label for="login-name">Your name</label><input id="login-name" type="text" maxlength="60" placeholder="e.g. Ada" autocomplete="username"></div>
+            <div class="field"><label for="login-pass">Password <span class="hint">(optional)</span></label><input id="login-pass" type="password" maxlength="100" autocomplete="current-password"></div>
+          </div>
+          <div id="login-error" class="alert error hidden"></div>
+          <button type="button" class="primary" id="login-go">Continue</button>
+        </div>
         <div id="editor">
-          <div class="field"><label for="name">Your name</label><input id="name" type="text" maxlength="60" placeholder="So others know who's free" required></div>
+          <div class="field" id="name-field"><label for="name">Your name</label><input id="name" type="text" maxlength="60" placeholder="So others know who's free" required></div>
+          <div id="whoami" class="row hidden" style="margin-bottom:10px"><span>Signed in as <b id="whoami-name"></b></span><button type="button" class="btn-sm" id="switch-user">Not you?</button></div>
           <div class="toolbar">
             <div class="btn-group" id="brush">
               <button type="button" class="active" data-level="1"><span class="sw l1" style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--avail)"></span> Available</button>

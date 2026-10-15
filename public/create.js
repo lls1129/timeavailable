@@ -80,20 +80,23 @@
     state.excluded.clear(); updatePreview();
   }));
   $('#slot').addEventListener('change', () => { $('#slot-custom').classList.toggle('hidden', $('#slot').value !== 'custom'); state.excluded.clear(); updatePreview(); });
+  $('#duration').addEventListener('change', () => { $('#duration-custom').classList.toggle('hidden', $('#duration').value !== 'custom'); updatePreview(); });
   ['start', 'end', 'slot-custom', 'tz'].forEach((id) => $('#' + id).addEventListener('change', () => { state.excluded.clear(); updatePreview(); }));
+  $('#duration-custom').addEventListener('change', updatePreview);
   fillTzSelect($('#tz'), browserTz());
 
   const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
   function currentConfig() {
     const dates = [...state.dates].sort();
     const cfg = { title: $('#title').value, description: $('#description').value, dates, tz: $('#tz').value, allowMaybe: $('#allowMaybe').checked, excluded: [...state.excluded] };
-    if (state.mode === 'dates') Object.assign(cfg, { startMin: 0, endMin: 1440, slotMin: 1440, datesOnly: true });
+    if (state.mode === 'dates') Object.assign(cfg, { startMin: 0, endMin: 1440, slotMin: 1440, durationMin: 1440, datesOnly: true });
     else {
-      const slotSel = $('#slot').value;
+      const slotSel = $('#slot').value, durSel = $('#duration').value;
       const slotMin = slotSel === 'custom' ? Number($('#slot-custom').value) : Number(slotSel);
+      const durationMin = durSel === 'custom' ? Number($('#duration-custom').value) : Number(durSel);
       let endMin = $('#end').value ? toMin($('#end').value) : 0;
       if (endMin === 0) endMin = 1440;
-      Object.assign(cfg, { startMin: $('#start').value ? toMin($('#start').value) : 0, endMin, slotMin });
+      Object.assign(cfg, { startMin: $('#start').value ? toMin($('#start').value) : 0, endMin, slotMin, durationMin });
     }
     return cfg;
   }
@@ -104,10 +107,11 @@
     const cfg = currentConfig();
     const info = $('#preview-info'), box = $('#preview');
     if (!cfg.dates.length) { info.textContent = 'Select some dates to see the grid.'; box.replaceChildren(); return; }
-    if (!(cfg.slotMin >= 5) || cfg.endMin <= cfg.startMin) { info.textContent = 'Check the start/end times and slot length.'; box.replaceChildren(); return; }
+    if (!(cfg.slotMin >= 5) || cfg.endMin <= cfg.startMin) { info.textContent = 'Check the start/end times and step.'; box.replaceChildren(); return; }
+    const durWarn = !cfg.datesOnly && (cfg.durationMin % cfg.slotMin !== 0 ? ` ⚠ Meeting length (${cfg.durationMin} min) must be a multiple of the step (${cfg.slotMin} min).` : cfg.durationMin > cfg.endMin - cfg.startMin ? ' ⚠ Meeting length is longer than the daily window.' : '');
     const all = Slots.generate({ ...cfg, excluded: [] });
     const active = all.filter((t) => !state.excluded.has(t));
-    info.textContent = `${active.length} slot${active.length === 1 ? '' : 's'} across ${cfg.dates.length} date${cfg.dates.length === 1 ? '' : 's'}` + (state.excluded.size ? ` (${state.excluded.size} removed)` : '') + (all.length > 8000 ? ' — too many; use longer slots or fewer dates.' : '');
+    info.textContent = `${active.length} slot${active.length === 1 ? '' : 's'} across ${cfg.dates.length} date${cfg.dates.length === 1 ? '' : 's'}` + (state.excluded.size ? ` (${state.excluded.size} removed)` : '') + (all.length > 8000 ? ' — too many; use a larger step or fewer dates.' : '') + durWarn;
     const layout = layoutSlots(all, cfg.tz, cfg.slotMin);
     const perPage = daysThatFit(box.clientWidth || 600, cfg.datesOnly);
     previewPage = Math.min(previewPage, Math.max(0, layout.days.length - 1));
@@ -126,7 +130,9 @@
   function validateStatic(cfg) {
     if (!cfg.title.trim()) throw new Error('Title is required');
     if (!cfg.dates.length) throw new Error('Pick at least one date');
-    if (!(cfg.slotMin >= 5) || cfg.endMin <= cfg.startMin) throw new Error('Check the start/end times and slot length');
+    if (!(cfg.slotMin >= 5) || cfg.endMin <= cfg.startMin) throw new Error('Check the start/end times and step');
+    if (!(cfg.durationMin >= cfg.slotMin) || cfg.durationMin % cfg.slotMin !== 0) throw new Error(`Meeting length (${cfg.durationMin} min) must be a multiple of the start-time step (${cfg.slotMin} min)`);
+    if (cfg.durationMin > cfg.endMin - cfg.startMin) throw new Error('Meeting length is longer than the daily time window');
     const n = Slots.generate(cfg).length;
     if (!n) throw new Error('The grid has no time slots');
     if (n > 8000) throw new Error(`Too many time slots (${n}, max 8000). Use longer slots or fewer dates.`);
@@ -139,7 +145,7 @@
     try {
       let share, admin = '';
       if (STATIC_MODE) {
-        const clean = { title: cfg.title.trim(), description: cfg.description.trim(), tz: cfg.tz, dates: cfg.dates, startMin: cfg.startMin, endMin: cfg.endMin, slotMin: cfg.slotMin, allowMaybe: cfg.allowMaybe, excluded: cfg.excluded.sort((a, b) => a - b) };
+        const clean = { title: cfg.title.trim(), description: cfg.description.trim(), tz: cfg.tz, dates: cfg.dates, startMin: cfg.startMin, endMin: cfg.endMin, slotMin: cfg.slotMin, durationMin: cfg.durationMin, allowMaybe: cfg.allowMaybe, excluded: cfg.excluded.sort((a, b) => a - b) };
         validateStatic(clean);
         const blob = await encodeState({ c: clean, r: [] });
         share = new URL('poll.html#' + blob, location.href).href;

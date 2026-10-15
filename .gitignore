@@ -5,3 +5,4 @@ data/
 *.sqlite-shm
 .env
 .DS_Store
+.wrangler/

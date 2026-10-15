@@ -17,6 +17,7 @@
   const hdrs = () => (S.adminKey ? { 'X-Admin-Key': S.adminKey } : {});
   const datesOnly = () => S.poll.config.slotMin >= 1440;
   const slotMs = () => S.poll.config.slotMin * 60000;
+  const durationMin = () => S.poll.config.durationMin || S.poll.config.slotMin;
   const cfgKey = (cfg) => JSON.stringify({ ...cfg, final: undefined, closed: undefined });
 
   // ---- static-mode (de)serialisation ----
@@ -80,12 +81,20 @@
       if (!STATIC) { S.rid = saved.rid; S.editKey = saved.editKey; }
       $('#name').value = mineResp.name;
       S.mine = new Map(Object.entries(mineResp.slots).map(([k, v]) => [Number(k), v]));
+      const draft = store(`ta:draft:${pollId}`);
+      if (draft && draft.rid === S.rid && draft.slots) S.mine = new Map(Object.entries(draft.slots).map(([k, v]) => [Number(k), v]));
     } else {
       if (!STATIC) storeRemove(`ta:resp:${pollId}`);
       const draft = store(`ta:draft:${pollId}`);
-      if (draft) { $('#name').value = draft.name || ''; S.mine = new Map(Object.entries(draft.slots || {}).map(([k, v]) => [Number(k), v])); }
-      else if (saved && saved.name) $('#name').value = saved.name;
+      if (STATIC && draft) { $('#name').value = draft.name || ''; S.mine = new Map(Object.entries(draft.slots || {}).map(([k, v]) => [Number(k), v])); }
+      else if (STATIC && saved && saved.name) $('#name').value = saved.name;
+      if (!STATIC && saved && saved.name) $('#login-name').value = saved.name;
     }
+    $('#name-field').classList.toggle('hidden', !STATIC);
+    $('#login-go').addEventListener('click', login);
+    $('#login-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+    $('#login-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+    $('#switch-user').addEventListener('click', () => { S.rid = null; S.editKey = null; S.mine = new Map(); S.dirty = false; storeRemove(`ta:resp:${pollId}`); storeRemove(`ta:draft:${pollId}`); $('#login-pass').value = ''; renderAll(); });
 
     $$('#brush button').forEach((b) => b.addEventListener('click', () => { S.brush = Number(b.dataset.level); $$('#brush button').forEach((x) => x.classList.toggle('active', x === b)); }));
     if (!S.poll.config.allowMaybe) { $('#brush-maybe').classList.add('hidden'); $('#legend-maybe').classList.add('hidden'); }
@@ -135,6 +144,27 @@
     if (STATIC) window.addEventListener('hashchange', () => load(false));
   }
 
+  async function login() {
+    const name = $('#login-name').value.trim(), password = $('#login-pass').value;
+    const err = $('#login-error'); err.classList.add('hidden');
+    if (!name) { $('#login-name').focus(); return; }
+    const btn = $('#login-go'); btn.disabled = true;
+    try {
+      const r = await api('POST', `/api/polls/${pollId}/login`, { name, password });
+      S.rid = r.id; S.editKey = r.editKey;
+      S.mine = new Map(Object.entries(r.slots || {}).map(([k, v]) => [Number(k), v]));
+      S.dirty = false;
+      store(`ta:resp:${pollId}`, { rid: r.id, editKey: r.editKey, name: r.name });
+      storeRemove(`ta:draft:${pollId}`);
+      $('#login-pass').value = '';
+      await load(false);
+      toast(r.isNew ? `Welcome, ${r.name}! Select when you're free, then save.` : `Welcome back, ${r.name}. Your saved availability is loaded.`, 'ok');
+    } catch (e) {
+      err.textContent = e.message; err.classList.remove('hidden');
+      if (/password/i.test(e.message)) $('#login-pass').focus();
+    } finally { btn.disabled = false; }
+  }
+
   function showTab(tab) {
     S.tab = tab;
     $$('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
@@ -160,7 +190,7 @@
     S.dirty = true;
     $('#mine-status').textContent = 'Unsaved changes';
     $('#static-share').classList.add('hidden');
-    store(`ta:draft:${pollId}`, { name: $('#name').value, slots: Object.fromEntries(S.mine) });
+    store(`ta:draft:${pollId}`, { name: $('#name').value, rid: S.rid, slots: Object.fromEntries(S.mine) });
   }
 
   function renderAll() {
@@ -172,7 +202,8 @@
     $('#description').textContent = cfg.description || '';
     $('#description').classList.toggle('hidden', !cfg.description);
     const n = S.poll.responses.length;
-    $('#meta').textContent = `${cfg.dates.length} date${cfg.dates.length === 1 ? '' : 's'} · ${datesOnly() ? 'whole days' : `${cfg.slotMin}-minute slots`} · ${n} response${n === 1 ? '' : 's'}`;
+    const durLbl = (m) => (m % 60 === 0 ? `${m / 60} h` : m > 60 ? `${+(m / 60).toFixed(2)} h` : `${m} min`);
+    $('#meta').textContent = `${cfg.dates.length} date${cfg.dates.length === 1 ? '' : 's'} · ${datesOnly() ? 'whole days' : `${durLbl(durationMin())} meeting, start every ${cfg.slotMin} min`} · ${n} response${n === 1 ? '' : 's'}`;
     $('#closed-badge').classList.toggle('hidden', !cfg.closed);
     $('#tz-note').textContent = S.viewTz === cfg.tz ? `This is the poll's timezone.` : `Poll was created in ${cfg.tz.replace(/_/g, ' ')}.`;
     $('#admin-bar').classList.toggle('hidden', !S.poll.isAdmin);
@@ -181,7 +212,11 @@
     $$('.host-only').forEach((x) => x.classList.toggle('hidden', !S.isHost));
     $('#toggle-closed').textContent = cfg.closed ? 'Reopen poll' : 'Close poll';
     $('#closed-msg').classList.toggle('hidden', !cfg.closed);
-    $('#editor').classList.toggle('hidden', !!cfg.closed && !S.poll.isAdmin);
+    const signedIn = STATIC || !!(S.rid && S.editKey);
+    $('#signin').classList.toggle('hidden', signedIn || (!!cfg.closed && !S.poll.isAdmin));
+    $('#editor').classList.toggle('hidden', !signedIn || (!!cfg.closed && !S.poll.isAdmin));
+    $('#whoami').classList.toggle('hidden', STATIC || !signedIn);
+    if (!STATIC && signedIn) { const me = S.poll.responses.find((r) => r.id === S.rid); $('#whoami-name').textContent = me ? me.name : ''; if (!me) { S.rid = null; S.editKey = null; storeRemove(`ta:resp:${pollId}`); } }
     $('#count-badge').textContent = `${n} ${n === 1 ? 'person' : 'people'}`;
     renderFinal(); renderMine(); renderGroup(); renderPeople(); renderBest();
   }
@@ -207,8 +242,9 @@
   }
 
   async function save() {
-    const name = $('#name').value.trim();
-    if (!name) { toast('Please enter your name', 'error'); $('#name').focus(); return; }
+    const me = !STATIC && S.poll.responses.find((r) => r.id === S.rid);
+    const name = STATIC ? $('#name').value.trim() : (me ? me.name : '');
+    if (!name) { toast(STATIC ? 'Please enter your name' : 'Please sign in with your name first', 'error'); if (STATIC) $('#name').focus(); return; }
     const btn = $('#save'); btn.disabled = true;
     const slots = Object.fromEntries(S.mine);
     try {
@@ -226,13 +262,7 @@
         await load(false);
         $('#static-share').scrollIntoView({ behavior: 'smooth', block: 'center' });
       } else {
-        const body = { name, slots };
-        if (S.rid && S.editKey) {
-          await api('PUT', `/api/polls/${pollId}/responses/${S.rid}`, body, { 'X-Edit-Key': S.editKey, ...hdrs() });
-        } else {
-          const r = await api('POST', `/api/polls/${pollId}/responses`, body);
-          S.rid = r.id; S.editKey = r.editKey;
-        }
+        await api('PUT', `/api/polls/${pollId}/responses/${S.rid}`, { slots }, { 'X-Edit-Key': S.editKey, ...hdrs() });
         store(`ta:resp:${pollId}`, { rid: S.rid, editKey: S.editKey, name });
         storeRemove(`ta:draft:${pollId}`);
         S.dirty = false; $('#fab-save').classList.add('hidden');
@@ -293,7 +323,7 @@
       if (S.pinned === t) c.classList.add('hl');
       if (S.pending && t >= S.pending.start && t < S.pending.end) c.classList.add('fin');
     }
-    $('#group-hint').textContent = S.pick ? 'Drag down a column to choose the final time, then confirm below.' : person ? `Showing ${person.name}'s availability. Tap the name again to go back to the group view.` : 'Numbers show how many people are free. Tap a slot to see who; tap a name below to see one person\'s availability.';
+    $('#group-hint').textContent = S.pick ? `Tap a start time to schedule a ${durationMin() >= 60 ? +(durationMin() / 60).toFixed(2) + '-hour' : durationMin() + '-minute'} meeting there, or drag down a column for a custom length, then confirm below.` : person ? `Showing ${person.name}'s availability. Tap the name again to go back to the group view.` : 'Numbers show how many people are free. Tap a slot to see who; tap a name below to see one person\'s availability.';
     const show = (t) => {
       const e = per.get(t); if (!e) return;
       const { dayKey, minute } = Slots.localSlot(t, S.viewTz);
@@ -316,7 +346,11 @@
           const sorted = [...set].sort((a, b) => a - b);
           if (!sorted.length) return;
           let end = sorted[0] + slotMs();
-          for (let i = 1; i < sorted.length && sorted[i] === end; i++) end += slotMs();
+          if (sorted.length === 1) { // a single tap schedules a full meeting length from that slot
+            const want = sorted[0] + durationMin() * 60000;
+            const valid = new Set(S.slots);
+            while (end < want && valid.has(end)) end += slotMs();
+          } else for (let i = 1; i < sorted.length && sorted[i] === end; i++) end += slotMs();
           S.pending = { start: sorted[0], end };
           for (const [t, c] of cells) c.classList.toggle('fin', t >= S.pending.start && t < S.pending.end);
           showConfirm();
@@ -423,8 +457,10 @@
     $('#min-len-wrap').classList.toggle('hidden', datesOnly());
     if (!lenSel.options.length) {
       const sm = S.poll.config.slotMin;
-      const opts = [sm, sm * 2, sm * 3, sm * 4, sm * 6, sm * 8].filter((v, i, a) => a.indexOf(v) === i && v <= 1440);
-      lenSel.replaceChildren(...opts.map((m) => el('option', { value: m }, m >= 60 ? `${+(m / 60).toFixed(2)} h` : `${m} min`)));
+      const d = durationMin();
+      const opts = [sm, sm * 2, sm * 3, sm * 4, d, d + sm, d * 2, sm * 8].filter((v, i, a) => a.indexOf(v) === i && v <= 1440).sort((a, b) => a - b);
+      lenSel.replaceChildren(...opts.map((m) => el('option', { value: m }, (m >= 60 ? `${+(m / 60).toFixed(2)} h` : `${m} min`) + (m === d ? ' (meeting length)' : ''))));
+      lenSel.value = String(d);
     }
     const minLen = datesOnly() ? 1440 : Number(lenSel.value);
     const list = $('#best');

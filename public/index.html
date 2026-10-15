@@ -59,16 +59,24 @@
         </div>
         <div class="grid-2">
           <div class="field">
-            <label for="slot">Slot length</label>
-            <select id="slot">
-              <option value="15">15 minutes</option><option value="20">20 minutes</option><option value="30" selected>30 minutes</option>
-              <option value="45">45 minutes</option><option value="60">1 hour</option><option value="90">1.5 hours</option>
-              <option value="120">2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option><option value="custom">Custom…</option>
+            <label for="duration">Meeting length</label>
+            <select id="duration">
+              <option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60" selected>1 hour</option>
+              <option value="90">1.5 hours</option><option value="120">2 hours</option><option value="180">3 hours</option><option value="240">4 hours</option>
+              <option value="480">8 hours</option><option value="custom">Custom…</option>
             </select>
-            <input id="slot-custom" class="hidden" type="number" min="5" max="1440" step="5" value="10" style="margin-top:6px" aria-label="Custom slot length in minutes">
+            <input id="duration-custom" class="hidden" type="number" min="5" max="1440" step="5" value="60" style="margin-top:6px" aria-label="Custom meeting length in minutes">
           </div>
-          <div class="field"><label for="tz">Timezone <span class="hint">(these times are in)</span></label><select id="tz"></select></div>
+          <div class="field">
+            <label for="slot">Start times every <span class="hint">(grid resolution)</span></label>
+            <select id="slot">
+              <option value="15">15 minutes</option><option value="30" selected>30 minutes</option><option value="60">60 minutes</option><option value="custom">Custom…</option>
+            </select>
+            <input id="slot-custom" class="hidden" type="number" min="5" max="1440" step="5" value="10" style="margin-top:6px" aria-label="Custom step in minutes">
+          </div>
         </div>
+        <div class="field"><label for="tz">Timezone <span class="hint">(these times are in)</span></label><select id="tz"></select></div>
+        <p class="muted small">People mark every start-time slot they're free; the meeting length is used to suggest the best windows and when you pick the final time. A 3-hour meeting with 30-minute steps can start at 9:00, 9:30, 10:00, …</p>
       </div>
       <div class="field"><label class="check"><input type="checkbox" id="allowMaybe" checked> Let people also mark “if needed” (lower-priority availability)</label></div>
     </div>
