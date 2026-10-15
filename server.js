@@ -148,6 +148,18 @@ function validateSlots(raw, cfg) {
   return out;
 }
 
+// A scheduled time: a contiguous range of the poll's own slots.
+function validateFinal(f, cfg) {
+  if (f === null) return null;
+  if (!f || typeof f !== 'object') bad('final must be an object or null');
+  const start = Number(f.start), end = Number(f.end);
+  const ms = cfg.slotMin * 60000;
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start || (end - start) % ms !== 0) bad('Invalid final time range');
+  const valid = new Set(Slots.generate(cfg));
+  for (let t = start; t < end; t += ms) if (!valid.has(t)) bad('Final time must be made of slots in this poll');
+  return { start, end };
+}
+
 function loadPoll(id) {
   if (!/^[A-Za-z0-9_-]{6,32}$/.test(id)) throw new HttpError(404, 'Poll not found');
   const row = stmts.getPoll.get(id);
@@ -197,6 +209,7 @@ async function api(req, res, url) {
       if (body.title !== undefined) cfg.title = cleanText(body.title, LIMITS.title, 'Title', true);
       if (body.description !== undefined) cfg.description = cleanText(body.description, LIMITS.description, 'Description', false);
       if (body.closed !== undefined) cfg.closed = !!body.closed;
+      if (body.final !== undefined) cfg.final = validateFinal(body.final, cfg);
       stmts.updatePoll.run(JSON.stringify(cfg), poll.id);
       return send(res, 200, { ok: true });
     }

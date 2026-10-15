@@ -37,7 +37,21 @@
           <button type="button" class="btn-sm danger" id="delete-poll">Delete poll</button>
         </div>
       </div>
+      <div id="host-toggle" class="hidden small muted" style="margin-top:8px"><a href="#" id="host-link">I'm the host — show scheduling controls</a></div>
     </div>
+
+    <div id="final-banner" class="banner hidden">
+      <h2>📅 Scheduled: <span id="final-when"></span></h2>
+      <div id="final-who" class="small muted" style="margin-bottom:8px"></div>
+      <div class="row">
+        <a class="btn btn-sm" id="final-gcal" target="_blank" rel="noopener">Add to Google Calendar</a>
+        <a class="btn btn-sm" id="final-ics" download="event.ics">Download .ics</a>
+        <button type="button" class="btn-sm hidden host-only" id="final-change">Change</button>
+        <button type="button" class="btn-sm danger hidden host-only" id="final-clear">Unschedule</button>
+      </div>
+    </div>
+
+    <div class="tabs"><button type="button" class="active" data-tab="mine">My availability</button><button type="button" data-tab="group">Group results</button></div>
 
     <div class="poll-layout">
       <section class="card" id="mine-card">
@@ -45,18 +59,19 @@
         <div id="closed-msg" class="alert hidden">This poll is closed. You can still see the results.</div>
         <div id="editor">
           <div class="field"><label for="name">Your name</label><input id="name" type="text" maxlength="60" placeholder="So others know who's free" required></div>
-          <div class="row" style="margin-bottom:8px">
+          <div class="toolbar">
             <div class="btn-group" id="brush">
               <button type="button" class="active" data-level="1"><span class="sw l1" style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--avail)"></span> Available</button>
               <button type="button" data-level="2" id="brush-maybe"><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--maybe-bg)"></span> If needed</button>
             </div>
-            <button type="button" class="btn-sm" id="clear-mine">Clear all</button>
+            <button type="button" class="btn-sm" id="select-all">Select all</button>
+            <button type="button" class="btn-sm" id="clear-mine">Clear</button>
           </div>
           <div id="google-box" class="hidden" style="margin-bottom:10px">
             <div class="row">
               <button type="button" class="google-btn" id="google-import">
                 <svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-                Mark free times from Google Calendar
+                Fill from Google Calendar
               </button>
               <button type="button" class="btn-sm" id="google-more">More calendars…</button>
             </div>
@@ -64,13 +79,14 @@
               <label for="extra-cals">Extra calendar IDs <span class="hint">(comma-separated, e.g. a shared team calendar address). Your primary calendar is always included.</span></label>
               <input id="extra-cals" type="text" placeholder="team@example.com, abc123@group.calendar.google.com">
             </div>
-            <p class="privacy">Your browser asks Google only for <em>busy/free</em> intervals (no event titles, no attendees) and applies them to this grid locally. The access is revoked immediately afterwards. This site's server never sees your Google account, token, or calendar — it only receives the grid you submit.</p>
+            <p class="privacy">Your browser asks Google only for <em>busy/free</em> intervals (no event titles, no attendees), shows them on this grid and marks the rest as available. The access is revoked immediately afterwards. Nothing about your calendar leaves your browser — only the grid you save.</p>
           </div>
-          <p class="muted small">Click or drag over the slots when you're free. Clicking a painted slot again clears it.</p>
-          <div class="tgrid-wrap" id="mine-grid"></div>
+          <div class="legend"><span><i class="sw l1"></i>Available</span><span id="legend-maybe"><i class="sw l2"></i>If needed</span><span id="legend-busy" class="hidden"><i class="sw busy"></i>Busy in your calendar</span></div>
+          <p class="muted small" id="mine-hint">Drag across the calendar to select when you're free — any rectangle of days and times. Drag over selected slots to unselect them.</p>
+          <div id="mine-grid"></div>
           <div class="sticky-actions row" style="justify-content:space-between">
             <span id="mine-status" class="muted small"></span>
-            <button type="button" class="primary" id="save">Submit availability</button>
+            <button type="button" class="primary" id="save">Save availability</button>
           </div>
           <div id="static-share" class="alert ok hidden" style="margin-top:12px">
             <b>Saved into the link.</b> Send this updated link back to the group — it contains everyone's answers so far, and the next person should continue from it:
@@ -79,11 +95,21 @@
         </div>
       </section>
 
-      <section class="card">
+      <section class="card" id="group-card">
         <h2>Group availability <span id="count-badge" class="badge"></span></h2>
-        <div class="legend"><span>Fewer</span><span class="heat-scale" id="heat-scale"></span><span>More people free</span></div>
-        <div class="tgrid-wrap" id="group-grid"></div>
+        <div class="toolbar">
+          <div class="legend" style="margin:0"><span>Fewer</span><span class="heat-scale" id="heat-scale"></span><span>More people free</span></div>
+          <span class="spacer"></span>
+          <button type="button" class="btn-sm hidden host-only" id="pick-final">📅 Pick the final time</button>
+        </div>
+        <p class="muted small" id="group-hint">Numbers show how many people are free. Tap a slot to see who; tap a name below to see one person's availability.</p>
+        <div id="group-grid"></div>
         <div class="detail" id="detail" style="margin-top:10px"><span class="muted">Hover or tap a slot to see who's free.</span></div>
+        <div id="confirm-bar" class="confirm-bar hidden">
+          <span id="confirm-text" style="flex:1"></span>
+          <button type="button" class="btn-sm" id="confirm-cancel">Cancel</button>
+          <button type="button" class="btn-sm primary" id="confirm-ok">Schedule</button>
+        </div>
 
         <h3 style="margin-top:18px">Best times</h3>
         <div class="row small" style="margin-bottom:8px">
@@ -107,7 +133,8 @@
     </div>
   </div>
 </main>
-<footer>timeavailable · Calendar lookups run in your browser; the server only stores the slots you submit.</footer>
+<button type="button" class="primary fab hidden" id="fab-save">Save availability</button>
+<footer>timeavailable · Calendar lookups run in your browser; only the grid you save is shared.</footer>
 <script src="config.js"></script>
 <script src="slots.js"></script>
 <script src="common.js"></script>

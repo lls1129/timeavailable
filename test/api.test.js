@@ -94,6 +94,17 @@ test('full poll lifecycle', async () => {
   assert.strictEqual(whileClosed.status, 403);
   await call('PATCH', `/api/polls/${id}`, { closed: false }, { 'X-Admin-Key': adminKey });
 
+  const badFinal = await call('PATCH', `/api/polls/${id}`, { final: { start: slots[0], end: slots[0] + 7 * 60000 } }, { 'X-Admin-Key': adminKey });
+  assert.strictEqual(badFinal.status, 400);
+  const gapFinal = await call('PATCH', `/api/polls/${id}`, { final: { start: slots[0] - 30 * 60000, end: slots[0] + 30 * 60000 } }, { 'X-Admin-Key': adminKey });
+  assert.strictEqual(gapFinal.status, 400, 'range crossing the excluded slot is rejected');
+  const okFinal = await call('PATCH', `/api/polls/${id}`, { final: { start: slots[1], end: slots[1] + 2 * 30 * 60000 } }, { 'X-Admin-Key': adminKey });
+  assert.strictEqual(okFinal.status, 200);
+  state = (await call('GET', `/api/polls/${id}`)).json;
+  assert.deepStrictEqual(state.config.final, { start: slots[1], end: slots[1] + 3600000 });
+  await call('PATCH', `/api/polls/${id}`, { final: null }, { 'X-Admin-Key': adminKey });
+  assert.strictEqual((await call('GET', `/api/polls/${id}`)).json.config.final, null);
+
   const r2 = await call('POST', `/api/polls/${id}/responses`, { name: 'Bob', slots: {} });
   assert.strictEqual(r2.status, 201);
   const delNoAuth = await call('DELETE', `/api/polls/${id}/responses/${r2.json.id}`);

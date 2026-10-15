@@ -3,8 +3,9 @@
 A small, self-hosted web app for finding a time that works for everyone (think When2Meet, without accounts).
 
 - **Host** picks any set of dates (click or drag on a calendar, any combination), a daily time window, the slot length (15 min … several hours, or custom), or "whole days only", and can remove individual slots from the grid (lunch, early finish…). They get a share link and a private admin link.
-- **Participants** open the link, type a name, and paint the slots they're free ("available" or "if needed"), or click **Mark free times from Google Calendar** to pre-fill the grid from their calendar. They can come back and edit their answer from the same browser.
-- **Everyone** sees a heat map of overlap, who is free in any slot, and a ranked list of the best windows ("at least *k* people, for at least *n* minutes"). Times can be shown in any timezone.
+- **Participants** open the link, type a name, and drag across a calendar-style week grid to select every time they're free (any rectangle of days × times; drag again to unselect; "available" or "if needed"). **Fill from Google Calendar** overlays their busy times on the grid and selects everything else. They can come back and edit their answer from the same browser.
+- **Everyone** sees the group calendar with the number of free people in each slot, who is free in any slot, one person's availability on tap, and a ranked list of the best windows ("at least *k* people, for at least *n* minutes"). Times can be shown in any timezone; long polls page through days like a calendar.
+- **The host picks the final time** by dragging over the group calendar. Everyone then sees a "Scheduled" banner with who is free, plus *Add to Google Calendar* and *.ics* links.
 
 ## Privacy model
 

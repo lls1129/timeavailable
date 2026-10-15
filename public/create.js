@@ -99,6 +99,7 @@
   }
 
   // ---- preview ----
+  let previewPage = 0;
   function updatePreview() {
     const cfg = currentConfig();
     const info = $('#preview-info'), box = $('#preview');
@@ -108,16 +109,18 @@
     const active = all.filter((t) => !state.excluded.has(t));
     info.textContent = `${active.length} slot${active.length === 1 ? '' : 's'} across ${cfg.dates.length} date${cfg.dates.length === 1 ? '' : 's'}` + (state.excluded.size ? ` (${state.excluded.size} removed)` : '') + (all.length > 8000 ? ' — too many; use longer slots or fewer dates.' : '');
     const layout = layoutSlots(all, cfg.tz, cfg.slotMin);
-    const { grid, cells } = renderGrid(box, layout, { datesOnly: cfg.datesOnly, slotMin: cfg.slotMin });
+    const perPage = daysThatFit(box.clientWidth || 600, cfg.datesOnly);
+    previewPage = Math.min(previewPage, Math.max(0, layout.days.length - 1));
+    const { grid, cells } = renderGrid(box, layout, { datesOnly: cfg.datesOnly, page: { start: previewPage, count: perPage }, onNav: (d) => { previewPage = Math.max(0, Math.min(layout.days.length - 1, previewPage + d * perPage)); updatePreview(); } });
     for (const [t, c] of cells) if (state.excluded.has(t)) c.classList.add('x');
     grid.addEventListener('click', (e) => {
       const c = e.target.closest('.cell'); if (!c || !c.dataset.t) return;
       const t = Number(c.dataset.t);
       if (state.excluded.has(t)) state.excluded.delete(t); else state.excluded.add(t);
-      c.classList.toggle('x', state.excluded.has(t));
       updatePreview();
     });
   }
+  window.addEventListener('resize', () => updatePreview());
 
   // ---- submit ----
   function validateStatic(cfg) {
@@ -140,7 +143,9 @@
         validateStatic(clean);
         const blob = await encodeState({ c: clean, r: [] });
         share = new URL('poll.html#' + blob, location.href).href;
-        store(`ta:static:${hashId(JSON.stringify(clean))}`, { title: clean.title, link: share, createdAt: Date.now() });
+        const sid = hashId(JSON.stringify(clean));
+        store(`ta:static:${sid}`, { title: clean.title, link: share, createdAt: Date.now() });
+        store(`ta:host:${sid}`, true);
       } else {
         const { id, adminKey } = await api('POST', '/api/polls', cfg);
         share = `${location.origin}/p/${id}`;

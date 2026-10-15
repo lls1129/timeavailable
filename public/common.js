@@ -87,57 +87,105 @@ function layoutSlots(epochs, tz, slotMin) {
   return { days: [...days].sort(), rows: [...rows].sort((a, b) => a - b), at, slotMin };
 }
 
-/*
- * Render a grid. opts: { tz, slotMin, datesOnly, cellClass(epoch) -> string, onCell(epoch, cell) }
- */
-function renderGrid(container, layout, opts) {
-  const { days, rows, at } = layout;
-  const grid = el('div', { class: 'tgrid' + (opts.datesOnly ? ' dates-only' : '') + (opts.readonly ? ' readonly' : '') });
-  grid.style.gridTemplateColumns = `auto repeat(${days.length}, auto)`;
-  grid.append(el('div', { class: 'corner' }));
-  for (const d of days) {
-    const [y, m, dd] = d.split('-').map(Number);
-    const wd = DOW[new Date(Date.UTC(y, m - 1, dd)).getUTCDay()];
-    grid.append(el('div', { class: 'col-h' }, wd, el('small', {}, `${MONTHS[m - 1].slice(0, 3)} ${dd}`)));
-  }
-  const cells = new Map();
-  rows.forEach((min, i) => {
-    const showLabel = opts.datesOnly ? false : (min % 60 === 0 || layout.slotMin >= 60 || i === 0);
-    const isHour = !opts.datesOnly && min % 60 === 0 && i > 0;
-    grid.append(el('div', { class: 'row-h' }, showLabel ? fmtTime(min) : ''));
-    for (const d of days) {
-      const t = at.get(d + '|' + min);
-      if (t === undefined) { grid.append(el('div', { class: 'cell empty' + (isHour ? ' hour' : '') })); continue; }
-      const c = el('div', { class: 'cell' + (isHour ? ' hour' : ''), dataset: { t: String(t) }, title: opts.title ? opts.title(t) : `${fmtDay(d)} ${opts.datesOnly ? '' : fmtTime(min)}` });
-      cells.set(t, c);
-      grid.append(c);
-    }
-  });
-  container.replaceChildren(grid);
-  return { grid, cells };
+// How many day columns fit in a container of the given width.
+function daysThatFit(width, datesOnly) {
+  const minCol = datesOnly ? 64 : 58;
+  return Math.max(1, Math.min(7, Math.floor((width - 56) / minCol)));
 }
 
-/* Paint interaction for an editable grid: click/drag to apply a brush. */
-function enablePainting(grid, cells, getLevel, setLevel, brushFn, onDone) {
-  let painting = false, target = null, touched = new Set();
-  const cellAt = (x, y) => { const n = document.elementFromPoint(x, y); return n && n.classList.contains('cell') && n.dataset.t ? n : null; };
-  const apply = (c) => {
-    const t = Number(c.dataset.t);
-    if (touched.has(t)) return;
-    touched.add(t); setLevel(t, target); c.className = c.className.replace(/\bl[12]\b/g, '').trim() + (target ? ' l' + target : '');
-  };
-  grid.addEventListener('pointerdown', (e) => {
-    const c = cellAt(e.clientX, e.clientY); if (!c) return;
-    e.preventDefault();
-    const t = Number(c.dataset.t), brush = brushFn();
-    target = getLevel(t) === brush ? 0 : brush; // clicking an already-painted cell with the same brush clears it
-    painting = true; touched = new Set();
-    try { grid.setPointerCapture(e.pointerId); } catch { /* ignore */ }
-    apply(c);
+/*
+ * Render a calendar-style grid.
+ * opts: { datesOnly, page: {start, count}, readonly, cellContent(t) -> string|null, onNav(delta) }
+ * Returns { grid, cells: Map(epoch -> element), days (visible), rows }.
+ */
+function renderGrid(container, layout, opts = {}) {
+  const { rows, at } = layout;
+  const page = opts.page || { start: 0, count: layout.days.length };
+  const days = layout.days.slice(page.start, page.start + page.count);
+  const wrap = el('div', { class: 'cal-wrap' });
+  if (layout.days.length > page.count) {
+    const first = days[0], last = days[days.length - 1];
+    wrap.append(el('div', { class: 'cal-nav' },
+      el('button', { type: 'button', class: 'btn-sm', disabled: page.start === 0, onclick: () => opts.onNav && opts.onNav(-1), 'aria-label': 'Earlier days' }, '‹'),
+      el('span', {}, first === last ? fmtDay(first, { long: true }) : `${fmtDay(first)} – ${fmtDay(last)}`, el('span', { class: 'muted' }, ` · ${page.start + 1}–${page.start + days.length} of ${layout.days.length} days`)),
+      el('button', { type: 'button', class: 'btn-sm', disabled: page.start + page.count >= layout.days.length, onclick: () => opts.onNav && opts.onNav(1), 'aria-label': 'Later days' }, '›')));
+  }
+  const grid = el('div', { class: 'cal' + (opts.datesOnly ? ' dates-only' : '') + (opts.readonly ? ' readonly' : '') });
+  grid.style.gridTemplateColumns = `${opts.datesOnly ? 0 : 52}px repeat(${days.length}, minmax(0, 1fr))`;
+  grid.append(el('div', { class: 'corner' }));
+  days.forEach((d) => {
+    const [y, m, dd] = d.split('-').map(Number);
+    const wd = DOW[new Date(Date.UTC(y, m - 1, dd)).getUTCDay()];
+    grid.append(el('div', { class: 'col-h' }, el('span', {}, `${wd} · ${MONTHS[m - 1].slice(0, 3)}`), el('b', {}, String(dd))));
   });
-  grid.addEventListener('pointermove', (e) => { if (!painting) return; const c = cellAt(e.clientX, e.clientY); if (c) apply(c); });
-  const stop = () => { if (painting) { painting = false; onDone && onDone(); } };
-  grid.addEventListener('pointerup', stop); grid.addEventListener('pointercancel', stop);
+  const cells = new Map();
+  rows.forEach((min, r) => {
+    const hourStart = !opts.datesOnly && min % 60 === 0;
+    const label = opts.datesOnly ? '' : (hourStart || r === 0 ? fmtTime(min) : '');
+    grid.append(el('div', { class: 'row-h' }, label ? el('span', {}, label) : null));
+    days.forEach((d, c) => {
+      const t = at.get(d + '|' + min);
+      const cls = 'cell' + (hourStart ? ' hour' : '') + (r === 0 ? ' first' : '');
+      if (t === undefined) { grid.append(el('div', { class: cls + ' gap', title: 'Not offered' })); return; }
+      const cell = el('div', { class: cls, dataset: { t: String(t), c: String(c), r: String(r) }, title: opts.datesOnly ? fmtDay(d, { long: true }) : `${fmtDay(d)} ${fmtTime(min)}–${fmtTime(min + layout.slotMin)}` });
+      if (opts.cellContent) { const txt = opts.cellContent(t); if (txt != null && txt !== '') cell.append(el('span', { class: 'n' }, String(txt))); }
+      cells.set(t, cell);
+      grid.append(cell);
+    });
+  });
+  wrap.append(grid);
+  container.replaceChildren(wrap);
+  return { grid, cells, days, rows };
+}
+
+/*
+ * Rectangular drag selection (like a calendar / When2Meet): press on a cell, drag to another,
+ * every cell inside the rectangle is affected.
+ *   onStart(t)  -> mode (anything but null/undefined) or null to ignore the gesture
+ *   onPreview(set, mode) -> called while dragging with the epochs inside the rectangle
+ *   onCommit(set, mode)  -> called on release
+ *   sameColumn: restrict the rectangle to the column where the drag started
+ */
+function enableRectSelect(grid, cells, { onStart, onPreview, onCommit, sameColumn = false }) {
+  let drag = null;
+  const byPos = new Map();
+  for (const [t, c] of cells) byPos.set(c.dataset.c + '|' + c.dataset.r, t);
+  const cellAt = (x, y) => { const n = document.elementFromPoint(x, y); return n && n.classList && n.classList.contains('cell') && n.dataset.t ? n : null; };
+  const rect = (a, b) => {
+    const set = new Set();
+    const c1 = sameColumn ? a.c : Math.min(a.c, b.c), c2 = sameColumn ? a.c : Math.max(a.c, b.c);
+    const r1 = Math.min(a.r, b.r), r2 = Math.max(a.r, b.r);
+    for (let c = c1; c <= c2; c++) for (let r = r1; r <= r2; r++) { const t = byPos.get(c + '|' + r); if (t !== undefined) set.add(t); }
+    return set;
+  };
+  const pos = (n) => ({ c: Number(n.dataset.c), r: Number(n.dataset.r), t: Number(n.dataset.t) });
+  grid.addEventListener('pointerdown', (e) => {
+    if (e.button && e.button !== 0) return;
+    const n = cellAt(e.clientX, e.clientY); if (!n) return;
+    const a = pos(n);
+    const mode = onStart(a.t); if (mode == null) return;
+    e.preventDefault();
+    drag = { a, mode, last: a.c + '|' + a.r, id: e.pointerId };
+    try { grid.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    onPreview(rect(a, a), mode);
+  });
+  grid.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const n = cellAt(e.clientX, e.clientY); if (!n) return;
+    const b = pos(n); const key = b.c + '|' + b.r;
+    if (key === drag.last) return;
+    drag.last = key; onPreview(rect(drag.a, b), drag.mode);
+  });
+  const finish = (e) => {
+    if (!drag) return;
+    const n = cellAt(e.clientX, e.clientY);
+    const b = n ? pos(n) : null;
+    const set = rect(drag.a, b || drag.a);
+    const mode = drag.mode; drag = null;
+    onCommit(set, mode);
+  };
+  grid.addEventListener('pointerup', finish);
+  grid.addEventListener('pointercancel', (e) => { if (drag) { const m = drag.mode; drag = null; onCommit(new Set(), m); } });
 }
 
 function heatColor(frac) {
