@@ -32,7 +32,7 @@ Static mode is the "no server, online in five minutes" option: the poll definiti
 
 ### Static mode on GitHub Pages
 
-- **This repo:** make it public, set *Settings → Pages → Source* to *GitHub Actions*, and run the *Deploy static site to GitHub Pages* workflow (it also runs on every push to `main`). The site appears at `https://<user>.github.io/timeavailable/`. Set a repository variable `GOOGLE_CLIENT_ID` to enable the Google button.
+- **This repo:** every push to `main` that touches `public/` rebuilds the `gh-pages` branch (workflow in `.github/workflows/pages.yml`), which GitHub Pages serves at `https://<user>.github.io/timeavailable/`. The repo must be public (or on a paid plan). Set a repository variable `GOOGLE_CLIENT_ID` to enable the Google button.
 - **Any existing Pages site:** copy the `public/` folder into the site repo (e.g. as `timeavailable/`). That's all; `public/config.js` already selects static mode. Put your client ID in that file to enable the Google button.
 
 Server mode is what you get from `node server.js` / the Dockerfile; the same pages detect the mode from `config.js`, which the server generates.
