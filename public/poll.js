@@ -207,6 +207,11 @@
     $('#closed-badge').classList.toggle('hidden', !cfg.closed);
     $('#tz-note').textContent = S.viewTz === cfg.tz ? `This is the poll's timezone.` : `Poll was created in ${cfg.tz.replace(/_/g, ' ')}.`;
     $('#admin-bar').classList.toggle('hidden', !S.poll.isAdmin);
+    if (S.poll.isAdmin) {
+      const dump = { exportedAt: new Date().toISOString(), id: S.poll.id, config: cfg, responses: S.poll.responses.map((r) => ({ name: r.name, slots: r.slots, updatedAt: r.updatedAt })) };
+      $('#export-json').href = 'data:application/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(dump, null, 2));
+      $('#export-json').download = `timeavailable-${cfg.title.replace(/[^\w-]+/g, '_').slice(0, 40)}-${S.poll.id}.json`;
+    }
     $('#host-toggle').classList.toggle('hidden', !STATIC);
     $('#host-link').textContent = S.isHost ? 'Hide scheduling controls' : "I'm the host — show scheduling controls";
     $$('.host-only').forEach((x) => x.classList.toggle('hidden', !S.isHost));
