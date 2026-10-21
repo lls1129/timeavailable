@@ -8,7 +8,8 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": { "bindings": [{ "name": "POLLS", "class_name": "PollStore" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PollStore"] }],
-  // GOOGLE_CLIENT_ID: set it in the dashboard (Settings → Variables and Secrets) or add "vars": { "GOOGLE_CLIENT_ID": "..." } here.
+  // OAuth 2.0 Web client ID (public). Authorized JavaScript origin: https://timeavailable.lls-142.workers.dev
+  "vars": { "GOOGLE_CLIENT_ID": "815520326051-q11l5h4gj3h55okq3a4s32ehog8meb6g.apps.googleusercontent.com" },
   "keep_vars": true,
   "observability": { "enabled": true }
 }
