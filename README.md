@@ -33,8 +33,14 @@ All three serve the same pages; `config.js` tells the page which mode it is in. 
 
 ### Cloudflare Worker (free, no command line needed)
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lls1129/timeavailable)
+
+**Easiest:** click the button above (or open <https://deploy.workers.cloudflare.com/?url=https://github.com/lls1129/timeavailable>). It signs you in to Cloudflare, connects GitHub, creates a copy of this repository in your GitHub account, and deploys it with automatic redeploys on every push to that copy. Works from a phone.
+
+Manual alternative:
+
 1. Sign up / log in at <https://dash.cloudflare.com>.
-2. **Workers & Pages → Create → Import a repository** (connect your GitHub account if asked) and pick this repo. Wrangler config is in `wrangler.jsonc`, so keep the defaults: build command empty, deploy command `npx wrangler deploy`. Click **Deploy**.
+2. **Workers & Pages → Create application → Import a repository → Get started** (connect your GitHub account if asked) and pick this repo. Wrangler config is in `wrangler.jsonc`, so keep the defaults: build command empty, deploy command `npx wrangler deploy`. Click **Save and Deploy**.
 3. The app is live at `https://timeavailable.<your-subdomain>.workers.dev`. Every push to `main` redeploys. Storage needs nothing extra: each poll is a Durable Object with its own SQLite database (included in the free plan).
 4. Optional: set the Worker variable `GOOGLE_CLIENT_ID` (Settings → Variables) or edit `vars` in `wrangler.jsonc` to enable the Google Calendar button; add the `workers.dev` origin to the OAuth client. A custom domain can be attached under Settings → Domains.
 
