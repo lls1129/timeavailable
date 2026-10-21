@@ -109,6 +109,7 @@
         <h2>Group availability <span id="count-badge" class="badge"></span></h2>
         <div class="toolbar">
           <div class="legend" style="margin:0"><span>Fewer</span><span class="heat-scale" id="heat-scale"></span><span>More people free</span></div>
+          <label class="check small" style="margin:0" title="Include “if needed” answers in the numbers, shading and best times"><input type="checkbox" id="count-maybe" checked> count “if needed”</label>
           <span class="spacer"></span>
           <button type="button" class="btn-sm hidden host-only" id="pick-final">📅 Pick the final time</button>
         </div>
@@ -123,8 +124,7 @@
 
         <h3 style="margin-top:18px">Best times</h3>
         <div class="row small" style="margin-bottom:8px">
-          <span>At least</span><select id="min-people" style="width:auto"></select><span>people free,</span>
-          <label class="check small" style="margin:0"><input type="checkbox" id="count-maybe" checked> count “if needed”</label>
+          <span>At least</span><select id="min-people" style="width:auto"></select><span>people free</span>
           <span id="min-len-wrap">, for at least <select id="min-len" style="width:auto"></select></span>
         </div>
         <ul class="best-list" id="best"></ul>

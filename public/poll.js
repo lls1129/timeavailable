@@ -114,7 +114,7 @@
     });
     $('#host-link').addEventListener('click', (e) => { e.preventDefault(); S.isHost = !S.isHost; store(`ta:host:${pollId}`, S.isHost); renderAll(); });
     $('#min-people').addEventListener('change', renderBest);
-    $('#count-maybe').addEventListener('change', renderBest);
+    $('#count-maybe').addEventListener('change', () => { renderGroup(); renderBest(); });
     $('#min-len').addEventListener('change', renderBest);
     $('#google-more').addEventListener('click', () => $('#google-extra').classList.toggle('hidden'));
     $('#static-copy').addEventListener('click', () => copyText($('#static-link').value));
@@ -311,14 +311,16 @@
     const { N, per } = tally();
     const fin = S.poll.config.final;
     const person = S.filter ? S.poll.responses.find((r) => r.name === S.filter) : null;
+    const countMaybe = $('#count-maybe').checked;
+    const countOf = (e) => e.avail.length + (countMaybe ? e.maybe.length : 0);
     const { grid, cells } = renderGrid($('#group-grid'), S.layout, {
       datesOnly: datesOnly(), page: pageOpts(), onNav: nav, readonly: true,
-      cellContent: (t) => { if (person) return null; const e = per.get(t); const n = e.avail.length + e.maybe.length; return n ? n : null; },
+      cellContent: (t) => { if (person) return null; const n = countOf(per.get(t)); return n ? n : null; },
     });
     grid.classList.toggle('pick', S.pick);
     for (const [t, c] of cells) {
       if (person) setLevelClass(c, person.slots[t] || 0);
-      else { const e = per.get(t); const frac = N ? (e.avail.length + 0.5 * e.maybe.length) / N : 0; c.style.background = heatColor(frac); }
+      else { const frac = N ? countOf(per.get(t)) / N : 0; c.style.background = heatColor(frac); }
       if (fin && t >= fin.start && t < fin.end) c.classList.add('final');
       if (S.pinned === t) c.classList.add('hl');
       if (S.pending && t >= S.pending.start && t < S.pending.end) c.classList.add('fin');
@@ -331,7 +333,7 @@
       const no = [...names].filter((x) => !e.avail.includes(x) && !e.maybe.includes(x));
       const when = datesOnly() ? fmtDay(dayKey, { long: true }) : `${fmtDay(dayKey, { long: true })}, ${fmtTime(minute)}–${fmtTime(minute + S.poll.config.slotMin)}`;
       $('#detail').replaceChildren(
-        el('div', {}, el('b', {}, when), ' ', el('span', { class: 'muted' }, `${e.avail.length + e.maybe.length}/${N} free`)),
+        el('div', {}, el('b', {}, when), ' ', el('span', { class: 'muted' }, `${e.avail.length}/${N} free${e.maybe.length ? `, ${e.maybe.length} if needed` : ''}`)),
         el('div', { class: 'people' },
           e.avail.map((x) => el('span', { class: 'person avail' }, x)),
           e.maybe.map((x) => el('span', { class: 'person maybe' }, x, el('span', { class: 'muted small' }, ' if needed'))),
