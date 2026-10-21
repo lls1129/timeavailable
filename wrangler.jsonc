@@ -8,6 +8,7 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": { "bindings": [{ "name": "POLLS", "class_name": "PollStore" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PollStore"] }],
-  "vars": { "GOOGLE_CLIENT_ID": "" },
+  // GOOGLE_CLIENT_ID: set it in the dashboard (Settings → Variables and Secrets) or add "vars": { "GOOGLE_CLIENT_ID": "..." } here.
+  "keep_vars": true,
   "observability": { "enabled": true }
 }
