@@ -153,7 +153,8 @@
         store(`ta:static:${sid}`, { title: clean.title, link: share, createdAt: Date.now() });
         store(`ta:host:${sid}`, true);
       } else {
-        const { id, adminKey } = await api('POST', '/api/polls', cfg);
+        const { id, adminKey } = await api('POST', '/api/polls', cfg, CFG.createKeyRequired ? { 'X-Create-Key': $('#create-key').value } : {});
+        if (CFG.createKeyRequired) store('ta:createKey', $('#create-key').value);
         share = `${location.origin}/p/${id}`;
         admin = `${share}?admin=${adminKey}`;
         store(`ta:admin:${id}`, { adminKey, title: cfg.title, createdAt: Date.now() });
@@ -188,5 +189,6 @@
       el('span', { class: 'muted small' }, new Date(it.createdAt).toLocaleDateString()))));
   }
 
+  if (CFG.createKeyRequired) { $('#create-key-box').classList.remove('hidden'); $('#create-key').value = store('ta:createKey') || ''; }
   renderCal(); updateDates(); renderRecent();
 })();

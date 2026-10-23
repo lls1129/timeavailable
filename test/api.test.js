@@ -47,6 +47,12 @@ test('static pages and security headers', async () => {
   assert.strictEqual(conf.json.googleClientId, 'test-client-id');
 });
 
+test('retention date', () => {
+  const createdAt = Date.UTC(2026, 9, 1);
+  const exp = Slots.zonedToUtc('2026-11-01', 1440, 'America/New_York') + 90 * 86400000;
+  assert.strictEqual(require('../lib/api.js').expiresAt({ dates: ['2026-10-31', '2026-11-01'], tz: 'America/New_York' }, createdAt), exp);
+});
+
 test('full poll lifecycle', async () => {
   const bad = await call('POST', '/api/polls', { ...cfg, dates: [] });
   assert.strictEqual(bad.status, 400);

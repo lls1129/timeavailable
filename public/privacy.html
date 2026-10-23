@@ -24,7 +24,7 @@
       <li><b>Responses:</b> the name a participant types, the time slots they mark as available or "if needed", and, if they choose to set one, a one-way hash of their optional password (the password itself is never stored).</li>
       <li><b>Access keys:</b> random tokens that let the host administer a poll and let a participant edit their own response. They are kept in your browser's local storage and sent only to this service.</li>
     </ul>
-    <p>Poll data is stored on Cloudflare's infrastructure (Durable Objects with SQLite storage) and kept until the host deletes the poll. Anyone with a poll's link can see the names and availability submitted to that poll; share links only with the people you intend.</p>
+    <p>Poll data is stored on Cloudflare's infrastructure (Durable Objects with SQLite storage) and kept until the host deletes the poll, or at most 90 days after the last date the poll offers, after which it is deleted automatically. Anyone with a poll's link can see the names and availability submitted to that poll; share links only with the people you intend.</p>
 
     <h2>Google Calendar</h2>
     <p>The optional <b>Fill from Google Calendar</b> button lets a participant pre-fill their availability from their own calendar. It works like this:</p>

@@ -8,6 +8,9 @@
   "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
   "durable_objects": { "bindings": [{ "name": "POLLS", "class_name": "PollStore" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PollStore"] }],
+  // Per-IP limit on creating polls / signing in: 20 per minute.
+  "unsafe": { "bindings": [{ "name": "CREATE_LIMIT", "type": "ratelimit", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }] },
+  // Optional: set CREATE_KEY (dashboard → Variables and Secrets, as a secret) so only people who know it can create polls.
   // OAuth 2.0 Web client ID (public). Authorized JavaScript origin: https://timeavailable.lls-142.workers.dev
   "vars": { "GOOGLE_CLIENT_ID": "815520326051-q11l5h4gj3h55okq3a4s32ehog8meb6g.apps.googleusercontent.com" },
   "keep_vars": true,

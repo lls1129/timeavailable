@@ -18,6 +18,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const CREATE_KEY = process.env.CREATE_KEY || ''; // optional: only people who know it can create polls
 const MAX_BODY = 512 * 1024;
 
 // ---------- storage ----------
@@ -107,7 +108,7 @@ function serveStatic(req, res, url) {
   if (m) p = '/' + m[1];
   if (p === '/config.js') {
     res.writeHead(200, { 'Content-Type': MIME['.js'], 'Cache-Control': 'no-cache', ...api.SECURITY_HEADERS });
-    return res.end(api.configScript(GOOGLE_CLIENT_ID));
+    return res.end(api.configScript(GOOGLE_CLIENT_ID, !!CREATE_KEY));
   }
   const file = path.normalize(path.join(PUBLIC_DIR, p));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) return send(res, 404, 'Not found');
@@ -117,12 +118,36 @@ function serveStatic(req, res, url) {
   });
 }
 
+// Delete polls that are long past their dates (see api.RETENTION_MS).
+function sweepExpired() {
+  const now = Date.now();
+  for (const row of db.prepare('SELECT id, config, created_at FROM polls').all()) {
+    try { if (api.expiresAt(JSON.parse(row.config), row.created_at) < now) q.deletePoll.run(row.id); } catch { /* ignore */ }
+  }
+}
+sweepExpired();
+setInterval(sweepExpired, 6 * 3600 * 1000).unref();
+
+// Small in-memory rate limit for writes that create things (per client IP, per minute).
+const buckets = new Map();
+function rateLimited(ip, limit) {
+  const now = Date.now(), b = buckets.get(ip) || { t: now, n: 0 };
+  if (now - b.t > 60000) { b.t = now; b.n = 0; }
+  b.n++; buckets.set(ip, b);
+  if (buckets.size > 10000) buckets.clear();
+  return b.n > limit;
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (url.pathname.startsWith('/api/')) {
       api.checkWrite(req.method, (h) => req.headers[h]);
-      const r = await api.handle({ method: req.method, path: url.pathname, header: (h) => req.headers[h], json: () => readJson(req) }, store, { googleClientId: GOOGLE_CLIENT_ID });
+      if (req.method === 'POST' && (url.pathname === '/api/polls' || url.pathname.endsWith('/login'))) {
+        const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+        if (rateLimited(ip, 20)) throw new api.HttpError(429, 'Too many requests, please wait a minute');
+      }
+      const r = await api.handle({ method: req.method, path: url.pathname, header: (h) => req.headers[h], json: () => readJson(req) }, store, { googleClientId: GOOGLE_CLIENT_ID, createKey: CREATE_KEY });
       send(res, r.status, r.body);
     } else if (req.method === 'GET' || req.method === 'HEAD') {
       serveStatic(req, res, url);

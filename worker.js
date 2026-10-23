@@ -23,7 +23,13 @@ export default {
       if (p.startsWith('/api/')) {
         api.checkWrite(request.method, (h) => request.headers.get(h));
         const parts = p.split('/').filter(Boolean);
-        if (parts[1] === 'config') return json(200, { googleClientId: env.GOOGLE_CLIENT_ID || '', limits: api.LIMITS });
+        if (parts[1] === 'config') return json(200, { googleClientId: env.GOOGLE_CLIENT_ID || '', limits: api.LIMITS, createKeyRequired: !!env.CREATE_KEY });
+        // Rate limit the two calls that create things (per client IP).
+        if (request.method === 'POST' && env.CREATE_LIMIT && (p === '/api/polls' || p.endsWith('/login'))) {
+          const key = request.headers.get('cf-connecting-ip') || 'unknown';
+          const { success } = await env.CREATE_LIMIT.limit({ key });
+          if (!success) return json(429, { error: 'Too many requests, please wait a minute' });
+        }
         if (parts[1] !== 'polls') return json(404, { error: 'Not found' });
         let id = parts[2];
         if (!id) {
@@ -40,7 +46,7 @@ export default {
       let assetPath = p;
       if (/^\/p\/[A-Za-z0-9_-]+\/?$/.test(p)) assetPath = '/poll.html';
       else { const m = p.match(/^\/p\/([^/]+\.[a-z]+)$/); if (m) assetPath = '/' + m[1]; } // relative assets from /p/<id>
-      if (assetPath === '/config.js') return withHeaders(new Response(api.configScript(env.GOOGLE_CLIENT_ID), { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } }));
+      if (assetPath === '/config.js') return withHeaders(new Response(api.configScript(env.GOOGLE_CLIENT_ID, !!env.CREATE_KEY), { headers: { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' } }));
       const res = await env.ASSETS.fetch(new Request(new URL(assetPath, url.origin), { method: 'GET', headers: request.headers }));
       if (res.status === 404) return withHeaders(await env.ASSETS.fetch(new Request(new URL('/404.html', url.origin))), {});
       return withHeaders(res, assetPath.endsWith('.html') ? { 'Cache-Control': 'no-cache' } : {});
@@ -55,16 +61,16 @@ export class PollStore extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`
-      CREATE TABLE IF NOT EXISTS polls (id TEXT PRIMARY KEY, admin_key TEXT NOT NULL, config TEXT NOT NULL, created_at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS responses (id TEXT PRIMARY KEY, poll_id TEXT NOT NULL, name TEXT NOT NULL, edit_key TEXT NOT NULL, pass_hash TEXT, slots TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-    `);
+    this.ensureSchema();
     const sql = this.sql;
     this.store = {
-      async insertPoll(p) { sql.exec('INSERT INTO polls (id, admin_key, config, created_at) VALUES (?, ?, ?, ?)', p.id, p.adminKey, JSON.stringify(p.config), p.createdAt); },
+      async insertPoll(p) {
+        sql.exec('INSERT INTO polls (id, admin_key, config, created_at) VALUES (?, ?, ?, ?)', p.id, p.adminKey, JSON.stringify(p.config), p.createdAt);
+        await ctx.storage.setAlarm(api.expiresAt(p.config, p.createdAt)); // auto-delete after the retention period
+      },
       async getPoll(id) { const r = sql.exec('SELECT * FROM polls WHERE id = ?', id).toArray()[0]; return r ? { id: r.id, adminKey: r.admin_key, config: JSON.parse(r.config), createdAt: r.created_at } : null; },
       async updatePollConfig(id, cfg) { sql.exec('UPDATE polls SET config = ? WHERE id = ?', JSON.stringify(cfg), id); },
-      async deletePoll(id) { sql.exec('DELETE FROM responses WHERE poll_id = ?', id); sql.exec('DELETE FROM polls WHERE id = ?', id); },
+      async deletePoll(id) { sql.exec('DELETE FROM responses WHERE poll_id = ?', id); sql.exec('DELETE FROM polls WHERE id = ?', id); await ctx.storage.deleteAlarm(); await ctx.storage.deleteAll(); },
       async listResponses(pollId) { return sql.exec('SELECT id, name, slots, pass_hash, updated_at FROM responses WHERE poll_id = ? ORDER BY created_at', pollId).toArray().map((r) => ({ id: r.id, name: r.name, slots: JSON.parse(r.slots), passHash: r.pass_hash, updatedAt: r.updated_at })); },
       async countResponses(pollId) { return sql.exec('SELECT COUNT(*) AS n FROM responses WHERE poll_id = ?', pollId).one().n; },
       async getResponse(pollId, rid) { const r = sql.exec('SELECT id, name, edit_key, pass_hash FROM responses WHERE id = ? AND poll_id = ?', rid, pollId).toArray()[0]; return r ? { id: r.id, name: r.name, editKey: r.edit_key, passHash: r.pass_hash } : null; },
@@ -75,7 +81,22 @@ export class PollStore extends DurableObject {
       async deleteResponse(pollId, rid) { sql.exec('DELETE FROM responses WHERE id = ? AND poll_id = ?', rid, pollId); },
     };
   }
+  // Idempotent; also re-run after deleteAll() wiped the tables.
+  ensureSchema() {
+    this.sql.exec(`
+      CREATE TABLE IF NOT EXISTS polls (id TEXT PRIMARY KEY, admin_key TEXT NOT NULL, config TEXT NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS responses (id TEXT PRIMARY KEY, poll_id TEXT NOT NULL, name TEXT NOT NULL, edit_key TEXT NOT NULL, pass_hash TEXT, slots TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    `);
+  }
+  // Fired once per poll, after its retention period: wipe this object's storage.
+  async alarm() {
+    this.ensureSchema();
+    const row = this.sql.exec('SELECT id, config, created_at FROM polls').toArray()[0];
+    if (row && api.expiresAt(JSON.parse(row.config), row.created_at) > Date.now()) { await this.ctx.storage.setAlarm(api.expiresAt(JSON.parse(row.config), row.created_at)); return; }
+    await this.ctx.storage.deleteAll();
+  }
   async fetch(request) {
+    this.ensureSchema();
     const url = new URL(request.url);
     const id = request.headers.get('X-Poll-Id');
     try {
@@ -83,7 +104,7 @@ export class PollStore extends DurableObject {
       const r = await api.handle({
         method: request.method, path: url.pathname, header: (h) => request.headers.get(h) ?? undefined,
         json: async () => { bodyText = bodyText ?? await request.text(); if (!bodyText) return {}; try { return JSON.parse(bodyText); } catch { throw new api.HttpError(400, 'Invalid JSON'); } },
-      }, this.store, { googleClientId: this.env.GOOGLE_CLIENT_ID || '', newPollId: id });
+      }, this.store, { googleClientId: this.env.GOOGLE_CLIENT_ID || '', createKey: this.env.CREATE_KEY || '', newPollId: id });
       return json(r.status, r.body);
     } catch (e) {
       const r = api.errorResponse(e);

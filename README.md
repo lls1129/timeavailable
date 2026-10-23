@@ -44,6 +44,8 @@ Manual alternative:
 3. The app is live at `https://timeavailable.<your-subdomain>.workers.dev`. Every push to `main` redeploys. Storage needs nothing extra: each poll is a Durable Object with its own SQLite database (included in the free plan).
 4. Optional: set the Worker variable `GOOGLE_CLIENT_ID` (Settings → Variables) or edit `vars` in `wrangler.jsonc` to enable the Google Calendar button; add the `workers.dev` origin to the OAuth client. A custom domain can be attached under Settings → Domains.
 
+**Abuse limits.** Creating a poll and signing in are rate-limited to 20 per minute per IP (Worker rate-limit binding; in-memory on the Node server). Polls are deleted automatically 90 days after their last offered date. To restrict who can *create* polls, set a `CREATE_KEY` secret (Settings → Variables and Secrets, type Secret, or `CREATE_KEY=…` for the Node server): the create page then asks for it, while anyone with a poll link can still answer. Each poll has hard caps (120 dates, 8000 slots, 500 responses).
+
 From a computer, the same thing is `npx wrangler login && npx wrangler deploy`.
 
 ### Static mode on GitHub Pages
