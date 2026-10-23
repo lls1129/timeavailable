@@ -167,3 +167,20 @@ footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 20p
 .person.active { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .person.active .rm { color: var(--accent-ink); }
 kbd.hint { font: inherit; font-size: .8rem; color: var(--muted); }
+
+/* ---- Seasonal: Halloween (body.halloween; auto Oct 15 – Nov 1, toggle with the pumpkin button) ---- */
+body.halloween { --accent: #c2410c; --accent-soft: #fde7d6; }
+@media (prefers-color-scheme: dark) { body.halloween { --accent: #fb923c; --accent-ink: #1a0a00; --accent-soft: #4a2410; } }
+body.halloween .brand .logo { background: linear-gradient(135deg, #f97316, #7c2d12); }
+body.halloween .topbar { position: relative; }
+.hw-web { position: absolute; top: 0; left: 0; width: 110px; height: 110px; opacity: .18; pointer-events: none; z-index: 0; color: var(--text); }
+.hw-sky { position: fixed; top: 0; left: 0; right: 0; height: 44px; pointer-events: none; z-index: 0; overflow: hidden; }
+.hw-bat { position: absolute; top: 6px; left: -60px; font-size: 20px; opacity: .55; animation: hw-fly 26s linear infinite; filter: grayscale(1); }
+.hw-bat:nth-child(2) { top: 20px; font-size: 15px; animation-duration: 34s; animation-delay: -12s; }
+.hw-bat:nth-child(3) { top: 2px; font-size: 13px; animation-duration: 41s; animation-delay: -27s; }
+@keyframes hw-fly { 0% { transform: translateX(0) translateY(0); } 25% { transform: translateX(28vw) translateY(6px); } 50% { transform: translateX(56vw) translateY(-4px); } 75% { transform: translateX(84vw) translateY(5px); } 100% { transform: translateX(112vw) translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .hw-bat { animation: none; left: auto; right: 24px; } .hw-bat:nth-child(2) { right: 64px; } .hw-bat:nth-child(3) { right: 100px; } }
+.hw-toggle { border: 0; background: none; cursor: pointer; font-size: 1.1rem; padding: 2px 6px; opacity: .8; }
+.hw-toggle:hover { opacity: 1; background: none; }
+body.halloween footer::before { content: "🎃 Happy Halloween · "; }
+.topbar > * { position: relative; z-index: 1; }

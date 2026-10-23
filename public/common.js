@@ -230,3 +230,35 @@ async function shareOrCopy(url, title) {
   if (navigator.share) { try { await navigator.share({ title, url }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   copyText(url);
 }
+
+/* ---------- Seasonal theme (purely decorative, never touches the grids) ---------- */
+(function seasonal() {
+  const now = new Date(), m = now.getMonth(), d = now.getDate();
+  const inSeason = (m === 9 && d >= 15) || (m === 10 && d <= 1); // Oct 15 – Nov 1
+  const pref = store('ta:theme'); // 'halloween' | 'plain' | null
+  const on = pref === 'halloween' || (pref !== 'plain' && inSeason);
+  const apply = () => {
+    document.body.classList.toggle('halloween', on);
+    document.querySelectorAll('.hw-sky, .hw-web').forEach((n) => n.remove());
+    if (on) {
+      const sky = el('div', { class: 'hw-sky', 'aria-hidden': 'true' }, el('span', { class: 'hw-bat' }, '🦇'), el('span', { class: 'hw-bat' }, '🦇'), el('span', { class: 'hw-bat' }, '🦇'));
+      document.body.prepend(sky);
+      const bar = document.querySelector('.topbar');
+      if (bar) {
+        const web = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        web.setAttribute('class', 'hw-web'); web.setAttribute('viewBox', '0 0 100 100'); web.setAttribute('aria-hidden', 'true');
+        web.innerHTML = '<g fill="none" stroke="currentColor" stroke-width="1"><path d="M0 0L100 0M0 0L0 100M0 0L70 70M0 0L95 40M0 0L40 95"/><path d="M20 0Q18 12 0 20M40 0Q35 26 0 40M60 0Q52 40 0 60M80 0Q68 55 0 80"/></g>';
+        bar.prepend(web);
+      }
+    }
+  };
+  const mount = () => {
+    apply();
+    const bar = document.querySelector('.topbar');
+    if (bar && !bar.querySelector('.hw-toggle') && (inSeason || pref)) {
+      bar.append(el('button', { type: 'button', class: 'hw-toggle', title: on ? 'Turn off Halloween decorations' : 'Turn on Halloween decorations', 'aria-label': 'Toggle Halloween theme',
+        onclick: () => { store('ta:theme', on ? 'plain' : 'halloween'); location.reload(); } }, on ? '🎃' : '👻'));
+    }
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
+})();
